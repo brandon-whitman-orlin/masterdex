@@ -1,0 +1,120 @@
+.navbar {
+  background-color: var(--color-secondary);
+  color: var(--color-background);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: var(--font-size-sm) var(--font-size-xl);
+  position: fixed;
+  top: 0;
+  z-index: 3;
+  --fillColor: var(--color-background);
+}
+
+.navbar .site-name {
+  width: 100%;
+}
+
+.navbar .site-logo {
+  border-radius: 100%;
+  overflow: hidden;
+  width: 1.5ch;
+  aspect-ratio: 1;
+  margin-right: 0.5ch;
+  padding: 2px;
+  background-color: var(--color-background);
+}
+
+.navbar .site-logo svg {
+  font-size: inherit;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.navbar.collapsed {
+  padding: min(var(--font-size-sm), 5px) var(--font-size-xl);
+}
+
+.navbar.collapsed a,
+.navbar.collapsed span {
+  font-size: var(--font-size-sm);
+}
+
+.navbar.collapsed:hover a,
+.navbar.collapsed:hover span {
+  font-size: var(--font-size-lg);
+}
+
+.navbar .icon {
+  width: var(--font-size-lg);
+  height: var(--font-size-lg);
+  display: block;
+}
+
+.navbar span {
+  cursor: default;
+  display: inline;
+}
+
+.navbar a,
+.navbar span {
+  font-family: var(--heading-font);
+  text-decoration: none;
+  color: inherit;
+  font-weight: bold;
+  font-size: var(--font-size-lg);
+  width: fit-content;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s ease-in-out;
+  border-radius: var(--border-radius);
+  padding-inline: 0.25rem;
+  white-space: nowrap;
+}
+
+.navbar a:hover,
+.navbar span:hover {
+  color: var(--color-text);
+  background-color: var(--color-background);
+}
+
+.navbar a:focus-visible,
+.navbar span:focus-visible {
+  color: var(--color-text);
+  background-color: var(--color-background);
+  outline: 2px solid var(--color-primary);
+}
+
+.navbar .icon svg {
+  height: 100%;
+}
+
+.navbar .icon svg path {
+  fill: var(--fillColor);
+}
+
+.navbar .nav-list {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  text-transform: uppercase;
+  height: 100%;
+}
+
+@media screen and (max-width: 500px) {
+  .navbar .site-name {
+    width: 0;
+    padding: 0;
+    overflow: hidden;
+    transition: all 0.3s ease-in-out;
+  }
+
+  .navbar .dropdown .dropdown-menu li a {
+    font-size: var(--font-size-sm);
+  }
+}

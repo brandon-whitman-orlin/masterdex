@@ -1,0 +1,140 @@
+.calculator {
+  background-color: var(--color-surface);
+  padding: var(--font-size-base);
+  border-radius: var(--border-radius);
+  display: grid;
+  gap: var(--font-size-base);
+}
+
+.subtitle {
+  text-align: center;
+}
+
+.input-row {
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  gap: var(--font-size-base);
+  margin-bottom: var(--font-size-base);
+}
+
+.input-row input {
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border);
+  background: var(--input-bg);
+  color: var(--color-text);
+  padding: var(--font-size-base);
+}
+
+.input-row input::placeholder {
+  color: var(--color-heading);
+}
+
+.input-row input:focus {
+  outline: 3px solid var(--color-primary);
+  outline-offset: -3px;
+}
+
+button {
+  padding: var(--font-size-base);
+  border-radius: var(--border-radius);
+  border: none;
+  cursor: pointer;
+  background: var(--color-secondary);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+button:hover {
+
+}
+
+button:active {
+
+}
+
+.hint {
+
+}
+
+.result-card {
+  padding: var(--font-size-base);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border);
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--font-size-base);
+}
+
+.result-title {
+    text-transform: capitalize;
+    font-family: var(--heading-font);
+    font-weight: 600;
+}
+
+.result-subtitle {
+    text-transform: capitalize;
+    font-family: var(--heading-font);
+    font-weight: 600;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--font-size-base);
+  margin-block: var(--font-size-base);
+}
+
+.pill {
+  border-radius: var(--border-radius);
+  padding: var(--font-size-base);
+  background: var(--color-primary);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--font-size-sm);
+}
+
+.pill-label {
+    text-transform: capitalize;
+    font-family: var(--heading-font);
+    font-weight: 300;
+}
+
+.pill-value {
+
+}
+
+.pill-value strong {
+
+}
+
+.binder-pill .pill-value {
+
+}
+
+.extra-info {
+
+}
+
+.error {
+  padding: var(--font-size-base);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.footer-note {
+
+}
+
+@media (max-width: 480px) {
+  .result-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

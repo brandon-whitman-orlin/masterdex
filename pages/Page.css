@@ -1,0 +1,23 @@
+.page {
+  min-height: 100svh;
+}
+
+.page::before {
+  content: 'X';
+  color: transparent;
+  width: 100%;
+  display: block;
+  font-size: var(--font-size-lg);
+  padding: var(--font-size-sm) var(--font-size-xl);
+}
+
+.main {
+    display: grid;
+    grid-template-columns: 1fr;
+
+    max-width: 100%;
+    /* min-height: 100svh; */
+
+    position: relative;
+    height: fit-content;
+}

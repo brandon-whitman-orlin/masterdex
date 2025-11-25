@@ -1,0 +1,126 @@
+.page-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  /* min-height: 82ch; */
+  width: 100vw;
+}
+
+.page-section h1 {
+  font-size: var(--font-size-xxxl);
+  word-break: break-word;
+  max-width: 1000px;
+}
+
+.page-section .section-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: var(--font-size-lg);
+  gap: var(--font-size-xl);
+  padding: var(--font-size-lg);
+  max-width: 100%;
+  margin-block: 1rem;
+  position: relative;
+  align-self: stretch;
+}
+
+.page-section .section-content > img {
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  aspect-ratio: 1;
+  object-fit: cover;
+  max-width: min(300px, 50%);
+}
+
+.page-section .section-content > img[src$="svg%3e"],
+.page-section .section-content > img[src$=".svg"] {
+  object-fit: contain;
+}
+
+.page-section .section-content.reverse {
+  flex-direction: row-reverse;
+}
+
+.page-section .section-content.column {
+  flex-direction: column;
+}
+
+.page-section .section-content.reverse {
+  flex-direction: row-reverse;
+}
+
+.page-section .button-display {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-section .cta-button {
+  background-color: var(--color-primary);
+  color: var(--color-background);
+  text-decoration: none;
+  font-family: var(--heading-font);
+  font-weight: 900;
+  font-size: var(--font-size-xl);
+  padding: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease-in-out;
+}
+
+.cta-button:hover {
+  background-color: var(--color-secondary);
+}
+
+.cta-button:focus-visible {
+  background-color: var(--color-secondary);
+  outline: 3px solid var(--color-primary);
+}
+
+.page-section .social-button {
+  background-color: var(--color-text);
+  color: var(--color-background);
+  text-decoration: none;
+  font-family: var(--heading-font);
+  font-weight: 900;
+  font-size: var(--font-size-xl);
+  padding: 1rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+}
+
+.social-button:hover {
+  background-color: var(--color-heading);
+}
+
+.social-button:focus-visible {
+  background-color: var(--color-heading);
+  outline: 3px solid var(--color-primary);
+}
+
+.page-section .social-button svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+@media screen and (max-width: 600px) {
+  .page-section .section-content {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .page-section h1,
+  .page-section h2,
+  .page-section h3,
+  .page-section h4,
+  .page-section h5,
+  .page-section h6 {
+    text-align: center;
+  }
+}

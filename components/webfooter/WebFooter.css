@@ -1,0 +1,51 @@
+.web-footer {
+  width: 100%;
+  background-color: var(--color-secondary);
+  height: fit-content;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  color: var(--color-background);
+  padding: var(--font-size-sm) var(--font-size-xl);
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.web-footer svg {
+    aspect-ratio: 1;
+    background-color: var(--color-background);
+    padding: 0.1rem;
+    border-radius: 100%;
+    max-height: 1lh;
+}
+
+.web-footer a, .web-footer p {
+ font-family: var(--heading-font);
+  text-decoration: none;
+  color: inherit;
+  font-weight: bold;
+  font-size: var(--font-size-base);
+  width: fit-content;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: font-size 0.3s ease-in-out;
+}
+
+.web-footer a {
+  cursor: pointer;
+    border-radius: var(--border-radius);
+  padding-inline: 0.25rem;
+}
+
+.web-footer a:hover, .web-footer span:hover {
+  color: var(--color-text);
+  background-color: var(--color-background);
+}
+
+.web-footer a:focus-visible, .web-footer span:focus-visible {
+  color: var(--color-text);
+  background-color: var(--color-background);
+    outline: 2px solid var(--color-primary);
+}

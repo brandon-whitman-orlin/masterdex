@@ -1,0 +1,182 @@
+@import url('https://fonts.googleapis.com/css2?family=Science+Gothic:wght@100..900&display=swap');
+
+:root {
+  margin: 0 auto;
+  color-scheme: light dark;
+  color: var(--color-text);
+  --border-radius: 10px;
+  --heading-font: "Science Gothic", sans-serif;
+  --body-font: "Segoe UI", sans-serif;
+  
+  /* FONT SIZES: */
+  /* https://www.fluid-type-scale.com/calculate?minFontSize=16&minWidth=300&minRatio=1.25&maxFontSize=20&maxWidth=2500&maxRatio=1.333&steps=sm%2Cbase%2Clg%2Cxl%2Cxxl%2Cxxxl&baseStep=base&prefix=font-size&useContainerWidth=false&includeFallbacks=false&useRems=true&remValue=16&decimals=2&previewFont=Inter&previewText=Almost+before+we+knew+it%2C+we+had+left+the+ground&previewWidth=1280 */
+
+  --font-size-sm: clamp(0.8rem, 0.1vi + 0.78rem, 0.94rem);
+  --font-size-base: clamp(1rem, 0.18vi + 0.97rem, 1.25rem);
+  --font-size-lg: clamp(1.25rem, 0.3vi + 1.19rem, 1.67rem);
+  --font-size-xl: clamp(1.56rem, 0.48vi + 1.47rem, 2.22rem);
+  --font-size-xxl: clamp(1.95rem, 0.73vi + 1.82rem, 2.96rem);
+  --font-size-xxxl: clamp(2.44rem, 1.09vi + 2.24rem, 3.95rem);
+}
+
+#root {
+  position: relative;
+  max-width: 100vw;
+  min-height: 100svh;
+  width: 100%;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Backgrounds */
+    --color-background: #fdfafb;
+    --color-surface: #f1eeef;
+
+    /* Accents */
+    --color-primary: #ae637e;
+    --color-secondary: #aed2a9;
+
+    /* Typography & Icons */
+    --color-text: #180d11;
+    --color-heading: #3a3a3a;
+
+    /* Supporting */
+    --color-border: #858585;
+    --color-highlight: #f9f2f4;
+    --color-selection: #b1afaf;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+ /* Backgrounds */
+    --color-background: #fdfafb;
+    --color-surface: #f1eeef;
+
+    /* Accents */
+    --color-primary: #ae637e;
+    --color-secondary: #aed2a9;
+
+    /* Typography & Icons */
+    --color-text: #180d11;
+    --color-heading: #3a3a3a;
+
+    /* Supporting */
+    --color-border: #858585;
+    --color-highlight: #f9f2f4;
+    --color-selection: #b1afaf;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  scroll-behavior: smooth;
+}
+
+/* ::selection {
+  background: var(--selection);
+} */
+
+html {
+  overflow-x: hidden;
+}
+
+body {
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--color-background);
+  font-family: var(--body-font);
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--heading-font);
+  text-align: center;
+}
+
+p {
+  text-wrap: pretty;
+  max-width: 50ch;
+}
+
+a {
+  border-radius: 100rem;
+}
+
+ul,
+ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+/* *::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+  cursor: pointer;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--accent);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--grayed);
+  }
+} */
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    interpolate-size: allow-keywords;
+  }
+}
