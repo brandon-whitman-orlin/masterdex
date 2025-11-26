@@ -35,35 +35,37 @@
     --color-surface: #f1eeef;
 
     /* Accents */
-    --color-primary: #ae637e;
+    --color-primary: #d09da0;
     --color-secondary: #aed2a9;
+    --color-secondary-dark: #3a7232;
 
     /* Typography & Icons */
     --color-text: #180d11;
     --color-heading: #3a3a3a;
 
     /* Supporting */
-    --color-border: #858585;
+    --color-border: #d9d9d9;
     --color-highlight: #f9f2f4;
     --color-selection: #b1afaf;
   }
 }
 @media (prefers-color-scheme: dark) {
   :root {
- /* Backgrounds */
+    /* Backgrounds */
     --color-background: #fdfafb;
     --color-surface: #f1eeef;
 
     /* Accents */
-    --color-primary: #ae637e;
+    --color-primary: #d09da0;
     --color-secondary: #aed2a9;
+    --color-secondary-dark: #3a7232;
 
     /* Typography & Icons */
     --color-text: #180d11;
     --color-heading: #3a3a3a;
 
     /* Supporting */
-    --color-border: #858585;
+    --color-border: #d9d9d9;
     --color-highlight: #f9f2f4;
     --color-selection: #b1afaf;
   }
@@ -139,6 +141,7 @@ h5,
 h6 {
   font-family: var(--heading-font);
   text-align: center;
+  color: var(--color-heading);
 }
 
 p {

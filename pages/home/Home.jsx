@@ -18,7 +18,7 @@ function Home() {
       </main>
       <WebFooter>
         <a href="/about">About</a>
-        <a href="/contact">Contact</a>
+        {/* <a href="/contact">Contact</a> */}
       </WebFooter>
     </div>
   );

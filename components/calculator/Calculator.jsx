@@ -36,6 +36,11 @@ function findSlot(pokedexNumber) {
   };
 }
 
+function formatName(name) {
+  if (!name) return "";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 // now takes nameToDex as an argument instead of using a global
 function lookupPokemon(inputValue, nameToDex) {
   const trimmed = inputValue.trim();
@@ -74,7 +79,7 @@ function lookupPokemon(inputValue, nameToDex) {
 
   const result = findSlot(dexNumber);
   if (result.error) return result;
-  return { ...result, dexNumber, name: trimmed };
+  return { ...result, dexNumber, name: formatName(trimmed) };
 }
 
 export function Calculator() {
@@ -82,8 +87,18 @@ export function Calculator() {
   const [result, setResult] = useState(null);
 
   const [nameToDex, setNameToDex] = useState({});
+  const [pokedexList, setPokedexList] = useState([]); // for suggestions
   const [loadingDex, setLoadingDex] = useState(true);
   const [dexError, setDexError] = useState(null);
+
+  // --- NEW: sprite state ---
+  const [spriteUrl, setSpriteUrl] = useState(null);
+  const [spriteLoading, setSpriteLoading] = useState(false);
+  const [spriteError, setSpriteError] = useState(null);
+
+  // type-ahead state
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Fetch Pokédex data once on mount
   useEffect(() => {
@@ -103,10 +118,11 @@ export function Calculator() {
 
         const data = await res.json();
 
-        // Build name → dexNumber map
+        // Build name → dexNumber map + list for suggestions
         const map = {};
+        const list = [];
+
         data.results.forEach((pokemon, index) => {
-          // IDs line up with the order, but we can also parse from URL for safety
           const idFromUrl = pokemon.url
             .split("/")
             .filter(Boolean)
@@ -114,11 +130,14 @@ export function Calculator() {
           const id = Number(idFromUrl) || index + 1;
 
           if (id >= 1 && id <= MAX_POKEMON) {
-            map[pokemon.name.toLowerCase()] = id;
+            const name = pokemon.name.toLowerCase();
+            map[name] = id;
+            list.push({ name, dex: id });
           }
         });
 
         setNameToDex(map);
+        setPokedexList(list);
       } catch (err) {
         console.error("Failed to load Pokédex data:", err);
         setDexError(
@@ -132,15 +151,106 @@ export function Calculator() {
     loadPokedex();
   }, []);
 
-  const handleLookup = () => {
-    const res = lookupPokemon(inputValue, nameToDex);
+  // --- NEW: fetch sprite for a dex number ---
+  const fetchSprite = async (dexNumber) => {
+    if (!dexNumber) {
+      setSpriteUrl(null);
+      setSpriteError(null);
+      return;
+    }
+
+    try {
+      setSpriteLoading(true);
+      setSpriteError(null);
+
+      const res = await fetch(
+        `https://pokeapi.co/api/v2/pokemon/${dexNumber}`
+      );
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const url = data?.sprites?.front_default || null;
+
+      setSpriteUrl(url);
+    } catch (err) {
+      console.error("Failed to load sprite:", err);
+      setSpriteUrl(null);
+      setSpriteError("Couldn’t load sprite for this Pokémon.");
+    } finally {
+      setSpriteLoading(false);
+    }
+  };
+
+  const runLookup = (value) => {
+    const res = lookupPokemon(value, nameToDex);
     setResult(res);
+
+    if (res && !res.error && res.dexNumber) {
+      fetchSprite(res.dexNumber);
+    } else {
+      setSpriteUrl(null);
+      setSpriteError(null);
+    }
+  };
+
+  const handleLookup = () => {
+    runLookup(inputValue);
+    setShowSuggestions(false);
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setInputValue(value);
+
+    const trimmed = value.trim();
+
+    // reset suggestions if empty
+    if (!trimmed) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // if the user is typing a number, hide suggestions
+    const asNumber = Number(trimmed);
+    if (!Number.isNaN(asNumber) && Number.isInteger(asNumber)) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    if (!pokedexList.length) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const lower = trimmed.toLowerCase();
+
+    // only names that START WITH the input
+    const matches = pokedexList
+      .filter((p) => p.name.startsWith(lower))
+      .slice(0, 4);
+
+    setSuggestions(matches);
+    setShowSuggestions(matches.length > 0);
   };
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       handleLookup();
     }
+  };
+
+  const handleSuggestionClick = (name) => {
+    const formatted = formatName(name);
+    setInputValue(formatted);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    runLookup(formatted);
   };
 
   return (
@@ -155,23 +265,47 @@ export function Calculator() {
       </div>
 
       <div className="input-row">
-        <input
-          id="search"
-          type="text"
-          placeholder="e.g. Turtwig"
-          autoComplete="off"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
+        <div className="input-wrapper">
+          <input
+            id="search"
+            type="text"
+            placeholder="e.g. Turtwig"
+            autoComplete="off"
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              if (suggestions.length > 0) setShowSuggestions(true);
+            }}
+            onBlur={() => {
+              setTimeout(() => setShowSuggestions(false), 120);
+            }}
+          />
+
+          {showSuggestions && suggestions.length > 0 && (
+            <ul className="suggestions">
+              {suggestions.map((p) => (
+                <li
+                  key={p.dex}
+                  className="suggestion-item"
+                  onMouseDown={() => handleSuggestionClick(p.name)}
+                >
+                  <span className="suggestion-name">
+                    {formatName(p.name)}
+                  </span>
+                  <span className="suggestion-number"> (#{p.dex})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <button onClick={handleLookup}>Find Position</button>
       </div>
 
       <div className="hint">
         You're using 3 × 360-slot binders (40 pages each, 9 cards per page).
-        {loadingDex && (
-          <> &nbsp;• Loading Pokédex data from PokéAPI…</>
-        )}
+        {loadingDex && <> &nbsp;• Loading Pokédex data from PokéAPI…</>}
       </div>
 
       {dexError && <div className="error">{dexError}</div>}
@@ -188,6 +322,30 @@ export function Calculator() {
                   : `Pokémon #${result.dexNumber}`}
               </div>
               <div className="result-subtitle">Placement details</div>
+            </div>
+
+            {/* NEW: sprite block */}
+            <div className="result-top-row">
+              {spriteLoading && (
+                <div className="sprite-placeholder">Loading sprite…</div>
+              )}
+
+              {spriteUrl && !spriteLoading && (
+                <div className="sprite-wrapper">
+                  <img
+                    src={spriteUrl}
+                    alt={
+                      result.name
+                        ? `${result.name} sprite`
+                        : `Pokémon #${result.dexNumber} sprite`
+                    }
+                  />
+                </div>
+              )}
+
+              {spriteError && (
+                <div className="error sprite-error">{spriteError}</div>
+              )}
             </div>
 
             <div className="result-grid">

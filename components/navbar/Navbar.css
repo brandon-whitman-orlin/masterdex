@@ -19,10 +19,9 @@
 .navbar .site-logo {
   border-radius: 100%;
   overflow: hidden;
-  width: 1.5ch;
   aspect-ratio: 1;
   margin-right: 0.5ch;
-  padding: 2px;
+  padding: calc(var(--font-size-sm)/2);
   background-color: var(--color-background);
 }
 
@@ -31,6 +30,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  width: 2rem;
+  height: 2rem;
 }
 
 .navbar.collapsed {
@@ -106,7 +107,7 @@
   height: 100%;
 }
 
-@media screen and (max-width: 500px) {
+@media screen and (max-width: 600px) {
   .navbar .site-name {
     width: 0;
     padding: 0;
@@ -115,6 +116,14 @@
   }
 
   .navbar .dropdown .dropdown-menu li a {
+    font-size: var(--font-size-sm);
+  }
+}
+
+
+
+@media screen and (max-width: 600px) {
+  .navbar a {
     font-size: var(--font-size-sm);
   }
 }

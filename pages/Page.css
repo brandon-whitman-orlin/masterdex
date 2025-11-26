@@ -3,7 +3,7 @@
 }
 
 .page::before {
-  content: 'X';
+  content: "X";
   color: transparent;
   width: 100%;
   display: block;
@@ -11,13 +11,29 @@
   padding: var(--font-size-sm) var(--font-size-xl);
 }
 
+.tablet {
+  background-color: var(--color-background);
+  padding: var(--font-size-base);
+  border-radius: var(--border-radius);
+  display: grid;
+  gap: var(--font-size-base);
+  border: 1px solid var(--color-border);
+  margin: var(--font-size-base);
+  font-size: var(--font-size-base);
+  max-width: 50ch;
+}
+
+.tablet h2 {
+  text-align: left;
+}
+
 .main {
-    display: grid;
-    grid-template-columns: 1fr;
+  display: grid;
+  grid-template-columns: 1fr;
 
-    max-width: 100%;
-    /* min-height: 100svh; */
+  max-width: 100%;
+  /* min-height: 100svh; */
 
-    position: relative;
-    height: fit-content;
+  position: relative;
+  height: fit-content;
 }

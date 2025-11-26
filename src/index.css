@@ -9,4 +9,5 @@ body {
   place-items: center;
   min-height: 100vh;
   position: relative;
+  background-color: var(--color-surface);
 }

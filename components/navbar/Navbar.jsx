@@ -3,6 +3,8 @@ import "./Navbar.css";
 
 import Dropdown from '../dropdown/Dropdown';
 
+import { ReactComponent as Logo } from "../../assets/icons/logo.svg";
+
 const Navbar = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -26,8 +28,8 @@ const Navbar = ({ children }) => {
   return (
     <div className={`navbar ${collapsed ? "collapsed" : ""}`}>
       <a href="/" aria-label="Homepage">
-        <span className="site-logo"></span>
-        <span className="site-name">Pokédex Master Set</span>
+        <span className="site-logo"><Logo /></span>
+        <span className="site-name">PokedexSet</span>
       </a>
 
       <ul className="nav-list">
@@ -46,11 +48,11 @@ const Navbar = ({ children }) => {
             About
           </a>
         </li>
-        <li>
+        {/* <li>
           <a href="/contact" aria-label="Contact Us">
             Contact
           </a>
-        </li>
+        </li> */}
       </ul>
     </div>
   );

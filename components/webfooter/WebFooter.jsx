@@ -6,7 +6,7 @@ const WebFooter = ({ children }) => {
 
   return (
     <footer className="web-footer">
-      <p>© {currentYear}{" "}<strong>Pokédex Master Set</strong></p>
+      <p>© {currentYear}{" "}<strong>PokedexSet</strong></p>
       {children}
     </footer>
   );
