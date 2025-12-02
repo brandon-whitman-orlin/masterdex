@@ -39,8 +39,9 @@
 }
 
 .navbar.collapsed a,
+.navbar.collapsed button,
 .navbar.collapsed span {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-sm) !important;
 }
 
 .navbar.collapsed:hover a,
@@ -176,6 +177,10 @@
 }
 
 @media screen and (max-width: 600px) {
+  .navbar {
+    padding: min(var(--font-size-sm), 5px) var(--font-size-xl);
+  }
+
   .navbar .site-name {
     width: 0;
     padding: 0;
@@ -186,10 +191,20 @@
   .navbar .dropdown .dropdown-menu li a {
     font-size: var(--font-size-sm);
   }
-}
 
-@media screen and (max-width: 600px) {
-  .navbar a {
+  .navbar a,
+  .navbar button {
     font-size: var(--font-size-sm);
+  }
+
+  .navbar .site-logo svg {
+    width: 1rem !important;
+    height: 1rem !important;
+  }
+
+  .user-profile {
+    font-size: var(--font-size-lg) !important;
+    width: 1.46rem !important;
+    height: 1.46rem !important;
   }
 }

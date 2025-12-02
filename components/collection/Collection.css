@@ -2,24 +2,22 @@
   background-color: var(--color-background);
   padding: var(--font-size-base);
   border-radius: var(--border-radius);
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--font-size-base);
   border: 1px solid var(--color-border);
   margin: var(--font-size-base);
-  position: relative;
 }
 
-.collection-header div {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-direction: column;
+.collection-title {
+  font-size: var(--font-size-xxl) !important;
 }
 
 .collection-header,
 .collection-generation-header {
   font-family: var(--heading-font);
   text-transform: uppercase;
+  position: relative;
 }
 
 .collection-generation-header {
@@ -30,13 +28,16 @@
 }
 
 .collection-subtitle {
-  max-width: min(50ch, 500px);
   text-align: center;
+  width: 100%;
+  max-width: 657px;
+  margin-inline: auto;
 }
 
 .collection-stats,
 .collection-generation-count {
   margin-top: calc(var(--font-size-sm) / 2);
+  text-align: center;
 }
 
 .collection-progress,
@@ -72,9 +73,10 @@
 
 .collection-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(98px, 1fr));
   gap: var(--font-size-sm);
   margin: var(--font-size-base) 0 0;
+  place-items: center;
 }
 
 .collection-tile {
@@ -127,4 +129,5 @@
   color: var(--color-heading);
   font-weight: 600;
   text-transform: uppercase;
+  max-width: 100%;
 }

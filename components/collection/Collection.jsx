@@ -117,19 +117,17 @@ export function Collection() {
 
   return (
     <div className="collection">
-      <header className="collection-header">
-        <div>
+      <div className="collection-header">
           <h1 className="collection-title">My Pokédex Set</h1>
           <p className="collection-subtitle">
             Track your progress towards a complete Pokédex Master Set.
           </p>
-        </div>
         <div className="collection-stats">
           <span className="collection-count">
             {ownedCount} / {MAX_POKEMON} collected
           </span>
         </div>
-      </header>
+      </div>
 
       <div className="collection-progress">
         <div className="collection-progress-bar">

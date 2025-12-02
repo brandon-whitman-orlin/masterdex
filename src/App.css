@@ -84,9 +84,9 @@
   scroll-behavior: smooth;
 }
 
-/* ::selection {
-  background: var(--selection);
-} */
+::selection {
+  background: var(--color-primary);
+}
 
 html {
   overflow-x: hidden;
