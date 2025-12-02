@@ -21,7 +21,7 @@
   overflow: hidden;
   aspect-ratio: 1;
   margin-right: 0.5ch;
-  padding: calc(var(--font-size-sm) / 2);
+  padding: calc(var(--font-size-sm) / 3.4);
   background-color: var(--color-background);
 }
 
