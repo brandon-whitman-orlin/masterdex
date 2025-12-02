@@ -1,0 +1,130 @@
+.collection {
+  background-color: var(--color-background);
+  padding: var(--font-size-base);
+  border-radius: var(--border-radius);
+  display: grid;
+  gap: var(--font-size-base);
+  border: 1px solid var(--color-border);
+  margin: var(--font-size-base);
+  position: relative;
+}
+
+.collection-header div {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.collection-header,
+.collection-generation-header {
+  font-family: var(--heading-font);
+  text-transform: uppercase;
+}
+
+.collection-generation-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.collection-subtitle {
+  max-width: min(50ch, 500px);
+  text-align: center;
+}
+
+.collection-stats,
+.collection-generation-count {
+  margin-top: calc(var(--font-size-sm) / 2);
+}
+
+.collection-progress,
+.collection-generation-progress {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.collection-progress-bar,
+.collection-generation-progress-bar {
+  width: 100%;
+  height: var(--font-size-base);
+  border-radius: var(--border-radius);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  margin: calc(var(--font-size-sm) / 2) 0 0;
+}
+
+.collection-generation-progress-bar {
+  width: 75%;
+}
+
+.collection-progress-fill,
+.collection-generation-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-secondary);
+  transition: width 0.25s ease-out;
+}
+
+.collection-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--font-size-sm);
+  margin: var(--font-size-base) 0 0;
+}
+
+.collection-tile {
+  background: white;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  aspect-ratio: 1;
+  min-width: 98px;
+  position: relative;
+}
+
+.collection-tile .collection-tile-number {
+  position: absolute;
+  width: fit-content;
+  height: fit-content;
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  padding: calc(var(--font-size-sm) / 2);
+  font-family: var(--heading-font);
+  font-size: var(--font-size-sm);
+}
+
+.collection-tile .collection-tile-sprite {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.collection-tile:has(.collection-tile-sprite.owned) {
+  background-color: var(--color-secondary-faded);
+  border: 1px solid var(--color-text);
+}
+
+.collection-tile-sprite.unowned {
+  opacity: 0.25;
+}
+
+.collection-generation {
+  margin-top: 32px;
+}
+
+.collection-generation-title {
+  font-size: 1.2rem;
+  color: var(--color-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+}

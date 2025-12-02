@@ -1,4 +1,14 @@
 import React, { useState, useEffect } from "react";
+import { useAuth } from "../../src/AuthContext";
+import { db } from "../../src/firebase";
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+  getDoc,
+  deleteDoc,
+} from "firebase/firestore";
+
 import "./Calculator.css";
 
 // --- Configuration ---
@@ -91,7 +101,7 @@ export function Calculator() {
   const [loadingDex, setLoadingDex] = useState(true);
   const [dexError, setDexError] = useState(null);
 
-  // --- NEW: sprite state ---
+  // sprite state
   const [spriteUrl, setSpriteUrl] = useState(null);
   const [spriteLoading, setSpriteLoading] = useState(false);
   const [spriteError, setSpriteError] = useState(null);
@@ -100,6 +110,12 @@ export function Calculator() {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // auth + collection state
+  const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [inCollection, setInCollection] = useState(false);
+
   // Fetch Pokédex data once on mount
   useEffect(() => {
     async function loadPokedex() {
@@ -107,7 +123,6 @@ export function Calculator() {
         setLoadingDex(true);
         setDexError(null);
 
-        // This returns the first 1025 Pokémon in order
         const res = await fetch(
           `https://pokeapi.co/api/v2/pokemon?limit=${MAX_POKEMON}&offset=0`
         );
@@ -118,15 +133,11 @@ export function Calculator() {
 
         const data = await res.json();
 
-        // Build name → dexNumber map + list for suggestions
         const map = {};
         const list = [];
 
         data.results.forEach((pokemon, index) => {
-          const idFromUrl = pokemon.url
-            .split("/")
-            .filter(Boolean)
-            .pop();
+          const idFromUrl = pokemon.url.split("/").filter(Boolean).pop();
           const id = Number(idFromUrl) || index + 1;
 
           if (id >= 1 && id <= MAX_POKEMON) {
@@ -151,7 +162,7 @@ export function Calculator() {
     loadPokedex();
   }, []);
 
-  // --- NEW: fetch sprite for a dex number ---
+  // fetch sprite for a dex number
   const fetchSprite = async (dexNumber) => {
     if (!dexNumber) {
       setSpriteUrl(null);
@@ -163,9 +174,7 @@ export function Calculator() {
       setSpriteLoading(true);
       setSpriteError(null);
 
-      const res = await fetch(
-        `https://pokeapi.co/api/v2/pokemon/${dexNumber}`
-      );
+      const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${dexNumber}`);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -176,7 +185,7 @@ export function Calculator() {
 
       setSpriteUrl(url);
     } catch (err) {
-      console.error("Failed to load sprite:", err);
+      console.error("Couldn’t load sprite:", err);
       setSpriteUrl(null);
       setSpriteError("Couldn’t load sprite for this Pokémon.");
     } finally {
@@ -187,6 +196,7 @@ export function Calculator() {
   const runLookup = (value) => {
     const res = lookupPokemon(value, nameToDex);
     setResult(res);
+    setSaveMessage(""); // reset collection status when changing Pokémon
 
     if (res && !res.error && res.dexNumber) {
       fetchSprite(res.dexNumber);
@@ -207,14 +217,12 @@ export function Calculator() {
 
     const trimmed = value.trim();
 
-    // reset suggestions if empty
     if (!trimmed) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
 
-    // if the user is typing a number, hide suggestions
     const asNumber = Number(trimmed);
     if (!Number.isNaN(asNumber) && Number.isInteger(asNumber)) {
       setSuggestions([]);
@@ -230,7 +238,6 @@ export function Calculator() {
 
     const lower = trimmed.toLowerCase();
 
-    // only names that START WITH the input
     const matches = pokedexList
       .filter((p) => p.name.startsWith(lower))
       .slice(0, 4);
@@ -253,11 +260,100 @@ export function Calculator() {
     runLookup(formatted);
   };
 
+  // check whether current Pokémon is already in this user's collection
+  useEffect(() => {
+    async function checkInCollection() {
+      if (!user || !result || result.error || !result.dexNumber) {
+        setInCollection(false);
+        return;
+      }
+
+      try {
+        const ref = doc(
+          db,
+          "users",
+          user.uid,
+          "collection",
+          String(result.dexNumber)
+        );
+        const snap = await getDoc(ref);
+        setInCollection(snap.exists());
+      } catch (err) {
+        console.error("Failed to check collection:", err);
+        setInCollection(false);
+      }
+    }
+
+    checkInCollection();
+  }, [user, result]);
+
+  const handleAddToCollection = async () => {
+    if (!user || !result || result.error || !result.dexNumber) return;
+
+    try {
+      setSaving(true);
+      setSaveMessage("");
+
+      const userDocRef = doc(
+        db,
+        "users",
+        user.uid,
+        "collection",
+        String(result.dexNumber)
+      );
+
+      await setDoc(
+        userDocRef,
+        {
+          dexNumber: result.dexNumber,
+          name: result.name || null,
+          addedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setInCollection(true);
+      setSaveMessage("Added to your collection!");
+    } catch (err) {
+      console.error("Failed to save:", err);
+      setSaveMessage("Could not save this Pokémon.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveFromCollection = async () => {
+    if (!user || !result || result.error || !result.dexNumber) return;
+
+    try {
+      setSaving(true);
+      setSaveMessage("");
+
+      const ref = doc(
+        db,
+        "users",
+        user.uid,
+        "collection",
+        String(result.dexNumber)
+      );
+
+      await deleteDoc(ref);
+
+      setInCollection(false);
+      setSaveMessage("Removed from your collection.");
+    } catch (err) {
+      console.error("Failed to remove:", err);
+      setSaveMessage("Could not remove this Pokémon.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="calculator">
       <h1>
         <span className="logo"></span>
-        Pokédex Binder Helper
+        PokedexSet
       </h1>
 
       <div className="subtitle">
@@ -290,9 +386,7 @@ export function Calculator() {
                   className="suggestion-item"
                   onMouseDown={() => handleSuggestionClick(p.name)}
                 >
-                  <span className="suggestion-name">
-                    {formatName(p.name)}
-                  </span>
+                  <span className="suggestion-name">{formatName(p.name)}</span>
                   <span className="suggestion-number"> (#{p.dex})</span>
                 </li>
               ))}
@@ -324,7 +418,6 @@ export function Calculator() {
               <div className="result-subtitle">Placement details</div>
             </div>
 
-            {/* NEW: sprite block */}
             <div className="result-top-row">
               {spriteLoading && (
                 <div className="sprite-placeholder">Loading sprite…</div>
@@ -345,6 +438,47 @@ export function Calculator() {
 
               {spriteError && (
                 <div className="error sprite-error">{spriteError}</div>
+              )}
+
+              {user ? (
+                <div className="collection-actions">
+                  {inCollection ? (
+                    <button
+                      className="secondary-btn secondary-btn--danger"
+                      disabled={saving}
+                      onClick={handleRemoveFromCollection}
+                    >
+                      {saving ? (
+                        "Updating..."
+                      ) : (
+                        <>
+                          Remove from <strong>My Collection</strong>
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      className="secondary-btn"
+                      disabled={saving}
+                      onClick={handleAddToCollection}
+                    >
+                      {saving ? (
+                        "Saving..."
+                      ) : (
+                        <>
+                          Add to <strong>My Collection</strong>
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {saveMessage && (
+                    <div className="save-message">{saveMessage}</div>
+                  )}
+                </div>
+              ) : (
+                <div className="save-message save-message--muted">
+                  Sign in to track this Pokémon in your collection.
+                </div>
               )}
             </div>
 
@@ -370,6 +504,35 @@ export function Calculator() {
                 </div>
               </div>
             </div>
+
+            {/* {user ? (
+              <div className="collection-actions">
+                {inCollection ? (
+                  <button
+                    className="secondary-btn secondary-btn--danger"
+                    disabled={saving}
+                    onClick={handleRemoveFromCollection}
+                  >
+                    {saving ? "Updating…" : "Remove from My Collection"}
+                  </button>
+                ) : (
+                  <button
+                    className="secondary-btn"
+                    disabled={saving}
+                    onClick={handleAddToCollection}
+                  >
+                    {saving ? "Saving…" : "Add to My Collection"}
+                  </button>
+                )}
+                {saveMessage && (
+                  <div className="save-message">{saveMessage}</div>
+                )}
+              </div>
+            ) : (
+              <div className="save-message save-message--muted">
+                Sign in to track this Pokémon in your collection.
+              </div>
+            )} */}
 
             <div className="extra-info">
               This is slot {result.slotInBinder} within binder {result.binder}.

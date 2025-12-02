@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Science+Gothic:wght@100..900&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Science+Gothic:wght@100..900&display=swap");
 
 :root {
   margin: 0 auto;
@@ -7,7 +7,7 @@
   --border-radius: 10px;
   --heading-font: "Science Gothic", sans-serif;
   --body-font: "Segoe UI", sans-serif;
-  
+
   /* FONT SIZES: */
   /* https://www.fluid-type-scale.com/calculate?minFontSize=16&minWidth=300&minRatio=1.25&maxFontSize=20&maxWidth=2500&maxRatio=1.333&steps=sm%2Cbase%2Clg%2Cxl%2Cxxl%2Cxxxl&baseStep=base&prefix=font-size&useContainerWidth=false&includeFallbacks=false&useRems=true&remValue=16&decimals=2&previewFont=Inter&previewText=Almost+before+we+knew+it%2C+we+had+left+the+ground&previewWidth=1280 */
 
@@ -37,6 +37,7 @@
     /* Accents */
     --color-primary: #d09da0;
     --color-secondary: #aed2a9;
+    --color-secondary-faded: #aed2a97a;
     --color-secondary-dark: #3a7232;
 
     /* Typography & Icons */
@@ -58,6 +59,7 @@
     /* Accents */
     --color-primary: #d09da0;
     --color-secondary: #aed2a9;
+    --color-secondary-faded: #aed2a97a;
     --color-secondary-dark: #3a7232;
 
     /* Typography & Icons */
@@ -154,7 +156,8 @@ a {
 }
 
 ul,
-ol {
+ol,
+menu {
   list-style: none;
   padding-left: 0;
 }

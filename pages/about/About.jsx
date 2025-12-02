@@ -13,14 +13,21 @@ function About() {
       <main className="main">
         <PageSection large>
           <div className="tablet">
-            <h1>What is a Pokédex Master Set?</h1>
-            <p>A Pokédex Master Set (sometimes just called a Pokédex Set) is a collection of every Pokémon Card in the National Dex (all 1025 Pokémon).</p>
-          
-            <h2>So, what does this tool do?</h2>
-            <p>1025 (and counting) cards is a lot, so getting all of them in order can be a time consuming endeavor.</p>
-            <p>Especially if you're actively opening packs and collecting new Pokémon.</p>
-            <p>PokedexSet makes this tedious task trivial!</p>
-            <p>Simply enter the name (or number) of the Pokémon card you'd like to sort, and PokedexSet will tell you exactly where the card goes in your Pokédex.</p>
+            <h1>What is a Pokédex Set?</h1>
+            <p>
+              A Pokédex Set (or Pokédex Master Set) is the ultimate collecting
+              challenge: a single card for every Pokémon in the National Dex
+              (all 1025+ Pokémon).
+            </p>
+
+            <h2>How PokedexSet Helps</h2>
+            <p>
+              Sorting over a thousand cards is tedious, especially when you're
+              actively adding to your collection.{" "}
+              <strong>PokedexSet makes this task trivial!</strong> Simply enter
+              a Pokémon's name or number, and we'll tell you instantly where the
+              card belongs in your ultimate Pokédex Set.
+            </p>
           </div>
         </PageSection>
       </main>

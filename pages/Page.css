@@ -15,16 +15,21 @@
   background-color: var(--color-background);
   padding: var(--font-size-base);
   border-radius: var(--border-radius);
-  display: grid;
-  gap: var(--font-size-base);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: var(--font-size-sm);
   border: 1px solid var(--color-border);
   margin: var(--font-size-base);
   font-size: var(--font-size-base);
-  max-width: 50ch;
+  max-width: 70ch;
 }
 
 .tablet h2 {
   text-align: left;
+  margin-top: var(--font-size-base);
+
 }
 
 .main {
