@@ -40,6 +40,113 @@
   text-align: center;
 }
 
+.collection-filters {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--font-size-base);
+  font-family: var(--heading-font);
+}
+
+.collection-filter-item {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: calc(var(--font-size-sm) / 2);
+  cursor: pointer;
+}
+
+.collection-filter-item input[type="checkbox"] {
+  border-radius: 100%;
+  background-color: var(--color-secondary);
+  appearance: none;
+  width: var(--font-size-base);
+  height: var(--font-size-base);
+  opacity: 0.5;
+  border: 2px solid var(--color-secondary-dark);
+  cursor: pointer;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.collection-filter-item input[type="checkbox"]:checked {
+  opacity: 1;
+}
+
+.collection-filter-item input[type="checkbox"]::after {
+  content: url(/assets/icons/check.svg);
+  width: 0rem;
+  height: 0rem;
+  overflow: hidden;
+  display: block;
+  position: absolute;
+  left: 7.25%;
+  bottom: 7.25%;
+  transition: all 0.3s ease-in-out;
+  transform: rotate(-360deg);
+}
+
+.collection-filter-item input[type="checkbox"]:checked::after {
+  width: 1rem;
+  height: 1rem;
+  transform: rotate(0deg);
+}
+
+.collection-filter-item input[type="checkbox"]:hover {
+  opacity: 0.75;
+}
+
+.collection-filter-item input[type="checkbox"]:focus-visible {
+  opacity: 0.75;
+  outline: 2px solid var(--color-primary-dark);
+}
+
+.collection-import-export {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  flex-wrap: wrap;
+  gap: var(--font-size-sm);
+}
+
+.import-export-buttons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--font-size-sm);
+}
+
+.collection-export-options {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--font-size-sm);
+  background-color: var(--color-surface);
+  padding: var(--font-size-sm);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border);
+  box-sizing: border-box;
+}
+
+.collection-import-message {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--font-size-sm);
+  background-color: var(--color-surface);
+  padding: var(--font-size-sm);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border);
+  box-sizing: border-box;
+  text-align: center;
+}
+
 .collection-progress,
 .collection-generation-progress {
   display: flex;
