@@ -49,6 +49,26 @@
     --color-border: #d9d9d9;
     --color-highlight: #f9f2f4;
     --color-selection: #b1afaf;
+
+    /* Types */
+    --color-normal: #9fa19f;
+    --color-fire: #e62829;
+    --color-fighting: #ff8000;
+    --color-water: #2980ef;
+    --color-flying: #81b9ef;
+    --color-grass: #3fa129;
+    --color-poison: #9141cb;
+    --color-electric: #fac000;
+    --color-ground: #915121;
+    --color-psychic: #ef4179;
+    --color-rock: #afa981;
+    --color-ice: #3dcef3;
+    --color-bug: #91a119;
+    --color-dragon: #5060e1;
+    --color-ghost: #704170;
+    --color-dark: #624d4e;
+    --color-steel: #60a1b8;
+    --color-fairy: #ef70ef;
   }
 }
 @media (prefers-color-scheme: dark) {
@@ -72,6 +92,26 @@
     --color-border: #d9d9d9;
     --color-highlight: #f9f2f4;
     --color-selection: #b1afaf;
+
+    /* Types */
+    --color-normal: #9fa19f40;
+    --color-fire: #e6282940;
+    --color-fighting: #ff800040;
+    --color-water: #2980ef40;
+    --color-flying: #81b9ef40;
+    --color-grass: #3fa12940;
+    --color-poison: #9141cb40;
+    --color-electric: #fac00040;
+    --color-ground: #91512140;
+    --color-psychic: #ef417940;
+    --color-rock: #afa98140;
+    --color-ice: #3dcef340;
+    --color-bug: #91a11940;
+    --color-dragon: #5060e140;
+    --color-ghost: #70417040;
+    --color-dark: #624d4e40;
+    --color-steel: #60a1b840;
+    --color-fairy: #ef70ef40;
   }
 }
 
