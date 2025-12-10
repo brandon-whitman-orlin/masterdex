@@ -71,6 +71,7 @@ export default function Scanner() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
 
   // --- Load Pokédex data ---
@@ -158,6 +159,7 @@ export default function Scanner() {
       video.srcObject = null;
     }
     setCameraActive(false);
+    setCameraReady(false);
   };
 
   const startCamera = async () => {
@@ -168,13 +170,35 @@ export default function Scanner() {
 
     try {
       setCameraError(null);
+      setCameraReady(false);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+
+        // When metadata is loaded, we know videoWidth/videoHeight are available
+        const onLoadedMetadata = () => {
+          setCameraReady(true);
+          // Some browsers need an explicit play() call
+          video
+            .play()
+            .catch((err) =>
+              console.error("Video play() failed after metadata:", err)
+            );
+          video.removeEventListener("loadedmetadata", onLoadedMetadata);
+        };
+
+        video.addEventListener("loadedmetadata", onLoadedMetadata);
+
+        // In case metadata is already loaded (sometimes happens)
+        if (video.readyState >= 1) {
+          onLoadedMetadata();
+        }
       }
 
       setCameraActive(true);
@@ -226,7 +250,7 @@ export default function Scanner() {
     try {
       const result = await Tesseract.recognize(imageUrl, "eng", {
         logger: () => {
-          // you could surface progress here if you want
+          // optionally show progress
         },
       });
 
@@ -235,7 +259,10 @@ export default function Scanner() {
       setOcrText(rawText);
 
       if (!normalized) {
-        throw new Error("No text detected from OCR.");
+        setScanError(
+          "No readable text found on this image. Try moving closer or improving lighting."
+        );
+        return;
       }
 
       const match = findBestPokemonMatch(normalized, nameToDex);
@@ -250,7 +277,6 @@ export default function Scanner() {
 
       const { name, dexNumber } = match;
 
-      // Save to collection
       if (!user) {
         setStatusMessage(
           `Detected ${formatName(
@@ -295,7 +321,6 @@ export default function Scanner() {
       return;
     }
 
-    // Prefer the existing preview URL if present
     if (imagePreviewUrl) {
       await runScanOnImage(imagePreviewUrl);
     } else if (imageFile) {
@@ -307,15 +332,27 @@ export default function Scanner() {
 
   // --- Camera-based capture + scan ---
   const handleCaptureAndScan = async () => {
-    if (!videoRef.current) {
-      setCameraError("Camera is not active.");
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!cameraActive || !cameraReady || !video) {
+      setCameraError(
+        "Camera is still initializing. Wait a moment and try again."
+      );
       return;
     }
 
-    const video = videoRef.current;
+    if (!canvas) return;
 
-    const videoWidth = video.videoWidth || 640;
-    const videoHeight = video.videoHeight || 480;
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    if (!videoWidth || !videoHeight) {
+      setCameraError(
+        "Camera resolution is not ready yet. Try again in a second."
+      );
+      return;
+    }
 
     const targetWidth = 800;
     const scale = videoWidth > targetWidth ? targetWidth / videoWidth : 1;
@@ -323,16 +360,12 @@ export default function Scanner() {
     const canvasWidth = videoWidth * scale;
     const canvasHeight = videoHeight * scale;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Draw the current frame, scaled down
     ctx.drawImage(
       video,
       0,
@@ -347,7 +380,6 @@ export default function Scanner() {
 
     const dataUrl = canvas.toDataURL("image/png");
 
-    // Update preview to show the captured frame
     setImagePreviewUrl(dataUrl);
     setImageFile(null);
     setScanError(null);
@@ -424,7 +456,7 @@ export default function Scanner() {
               type="button"
               className="scanner-scan-btn scanner-scan-btn--camera"
               onClick={handleCaptureAndScan}
-              disabled={scanning || loadingDex}
+              disabled={scanning || loadingDex || !cameraReady}
             >
               {scanning ? "Scanning…" : "Capture & Scan"}
             </button>
@@ -446,14 +478,16 @@ export default function Scanner() {
               playsInline
               muted
             />
+            {!cameraReady && (
+              <div className="scanner-video-overlay">
+                Initializing camera…
+              </div>
+            )}
           </div>
         )}
 
         {/* Hidden canvas used for capturing frames */}
-        <canvas
-          ref={canvasRef}
-          style={{ display: "none" }}
-        />
+        <canvas ref={canvasRef} style={{ display: "none" }} />
       </section>
 
       {/* File upload section */}

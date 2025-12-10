@@ -1,0 +1,25 @@
+.scanner-video-wrapper {
+  position: relative;
+  max-width: 400px;
+  margin-top: 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+
+.scanner-video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.scanner-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  color: white;
+  background: rgba(0, 0, 0, 0.35);
+}
