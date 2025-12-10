@@ -10,18 +10,24 @@ import {
   setDoc,
   serverTimestamp,
   collection,
- onSnapshot,
+  onSnapshot,
 } from "firebase/firestore";
 
 const MAX_POKEMON = 1025;
 
-// Normalized frame for card placement (as percentages of the video)
+// Use multiple languages Tesseract can be configured for
+// (Make sure your Tesseract setup has these traineddata files available)
+const OCR_LANGS = "eng+jpn+kor+fra+deu";
+
+// Card frame: 2.5 x 3.5 ratio ≈ 0.714 (width/height)
+// We'll make it 60% wide and 84% tall => 0.6 / 0.84 ≈ 0.714
+// and center it nicely in the video.
 // These MUST match the CSS overlay values.
 const CARD_FRAME = {
-  x: 0.1,   // 10% from left
-  y: 0.15,  // 15% from top
-  width: 0.8,  // 80% width
-  height: 0.6, // 60% height
+  x: 0.2,   // 20% from left
+  y: 0.08,  // 8% from top
+  width: 0.6,  // 60% width
+  height: 0.84 // 84% height
 };
 
 // --- Helpers ---
@@ -54,6 +60,60 @@ function getSpriteUrl(dexNumber) {
   return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dexNumber}.png`;
 }
 
+// Very simple heuristic to guess language/script of OCR text
+function detectLanguageFromText(text) {
+  if (!text) return "Unknown";
+
+  let hasHiraganaOrKatakana = false;
+  let hasHangul = false;
+  let hasCjk = false;
+
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+
+    // Hiragana: 3040–309F
+    if (code >= 0x3040 && code <= 0x309F) {
+      hasHiraganaOrKatakana = true;
+      continue;
+    }
+    // Katakana: 30A0–30FF
+    if (code >= 0x30A0 && code <= 0x30FF) {
+      hasHiraganaOrKatakana = true;
+      continue;
+    }
+    // Hangul syllables: AC00–D7AF
+    if (code >= 0xAC00 && code <= 0xD7AF) {
+      hasHangul = true;
+      continue;
+    }
+    // CJK Unified Ideographs (used by Japanese & Chinese)
+    if (code >= 0x4E00 && code <= 0x9FFF) {
+      hasCjk = true;
+      continue;
+    }
+  }
+
+  if (hasHangul) {
+    return "Korean (Hangul detected)";
+  }
+
+  if (hasHiraganaOrKatakana && hasCjk) {
+    return "Japanese (Kana + Kanji detected)";
+  }
+
+  if (hasHiraganaOrKatakana) {
+    return "Japanese (Kana detected)";
+  }
+
+  if (hasCjk) {
+    // Could be Chinese or Japanese Kanji-only; we lump it for now.
+    return "CJK (Chinese/Japanese Kanji)";
+  }
+
+  // Fallback: probably a Latin script language
+  return "Latin (English/French/German/etc.)";
+}
+
 export default function Scanner() {
   const { user } = useAuth();
 
@@ -73,6 +133,7 @@ export default function Scanner() {
   // Scan state
   const [scanning, setScanning] = useState(false);
   const [ocrText, setOcrText] = useState("");
+  const [detectedLanguage, setDetectedLanguage] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [scanError, setScanError] = useState(null);
 
@@ -237,6 +298,7 @@ export default function Scanner() {
     setScanError(null);
     setStatusMessage("");
     setOcrText("");
+    setDetectedLanguage(null);
 
     const url = URL.createObjectURL(file);
     setImagePreviewUrl(url);
@@ -258,17 +320,20 @@ export default function Scanner() {
     setScanError(null);
     setStatusMessage("");
     setOcrText("");
+    setDetectedLanguage(null);
 
     try {
-      const result = await Tesseract.recognize(imageUrl, "eng", {
+      const result = await Tesseract.recognize(imageUrl, OCR_LANGS, {
         logger: () => {
-          // optionally show progress
+          // optionally show progress here
         },
       });
 
       const rawText = result?.data?.text || "";
       const normalized = normalizeText(rawText);
+
       setOcrText(rawText);
+      setDetectedLanguage(detectLanguageFromText(rawText));
 
       if (!normalized) {
         setScanError(
@@ -342,7 +407,7 @@ export default function Scanner() {
     }
   };
 
-  // --- Camera-based capture + scan (cropping to frame) ---
+  // --- Camera-based capture + scan (cropping to card-shaped frame) ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -415,6 +480,7 @@ export default function Scanner() {
     setScanError(null);
     setStatusMessage("");
     setOcrText("");
+    setDetectedLanguage(null);
 
     await runScanOnImage(dataUrl);
   };
@@ -459,8 +525,8 @@ export default function Scanner() {
       <header className="scanner-header">
         <h1 className="scanner-title">Scan Cards</h1>
         <p className="scanner-subtitle">
-          Use your camera or upload a photo of a Pokémon card. Line the card
-          up inside the frame and I’ll try to detect the Pokémon and add it to
+          Use your camera or upload a photo of a Pokémon card. Line the card up
+          inside the frame and I’ll try to detect the Pokémon and add it to
           your collection.
         </p>
       </header>
@@ -511,7 +577,7 @@ export default function Scanner() {
 
             {cameraReady && (
               <>
-                {/* Darkened mask + card frame */}
+                {/* Darkened mask + card-shaped frame */}
                 <div className="scanner-frame-mask" />
                 <div className="scanner-frame">
                   <div className="scanner-frame-border" />
@@ -570,6 +636,12 @@ export default function Scanner() {
         {scanError && <div className="scanner-error">{scanError}</div>}
         {statusMessage && (
           <div className="scanner-status">{statusMessage}</div>
+        )}
+
+        {detectedLanguage && (
+          <div className="scanner-language">
+            Detected language: <strong>{detectedLanguage}</strong>
+          </div>
         )}
       </section>
 
