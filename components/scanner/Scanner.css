@@ -1,8 +1,8 @@
 .scanner-video-wrapper {
   position: relative;
-  max-width: 400px;
+  max-width: 420px;
   margin-top: 12px;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
   background: #000;
 }
@@ -13,13 +13,55 @@
   height: auto;
 }
 
-.scanner-video-overlay {
+/* Loading overlay */
+.scanner-video-overlay--loading {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.9rem;
-  color: white;
-  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+/* Dark mask outside the card frame */
+.scanner-frame-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+/* Card frame: position must match CARD_FRAME normalized values */
+.scanner-frame {
+  position: absolute;
+  left: 10%;   /* CARD_FRAME.x = 0.1 */
+  top: 15%;    /* CARD_FRAME.y = 0.15 */
+  width: 80%;  /* CARD_FRAME.width = 0.8 */
+  height: 60%; /* CARD_FRAME.height = 0.6 */
+  pointer-events: none;
+}
+
+/* Visible border of the frame */
+.scanner-frame-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 2px solid var(--color-primary, #ae637e);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+/* Small label under the frame */
+.scanner-frame-label {
+  position: absolute;
+  left: 50%;
+  bottom: -1.6rem;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  white-space: nowrap;
 }

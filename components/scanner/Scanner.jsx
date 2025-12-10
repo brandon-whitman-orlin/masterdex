@@ -10,10 +10,19 @@ import {
   setDoc,
   serverTimestamp,
   collection,
-  onSnapshot,
+ onSnapshot,
 } from "firebase/firestore";
 
 const MAX_POKEMON = 1025;
+
+// Normalized frame for card placement (as percentages of the video)
+// These MUST match the CSS overlay values.
+const CARD_FRAME = {
+  x: 0.1,   // 10% from left
+  y: 0.15,  // 15% from top
+  width: 0.8,  // 80% width
+  height: 0.6, // 60% height
+};
 
 // --- Helpers ---
 
@@ -82,10 +91,7 @@ export default function Scanner() {
         setDexError(null);
 
         const res = await fetch(
-          `https://pokeapi.co/api/v2/pokemon?limit={MAX_POKEMON}&offset=0`.replace(
-            "{MAX_POKEMON}",
-            MAX_POKEMON
-          )
+          `https://pokeapi.co/api/v2/pokemon?limit=${MAX_POKEMON}&offset=0`
         );
 
         if (!res.ok) {
@@ -182,7 +188,6 @@ export default function Scanner() {
       const video = videoRef.current;
       if (!video) {
         console.warn("Video element not mounted yet.");
-        // We won't set cameraReady here; effect may retry or the user can toggle again
         return;
       }
 
@@ -191,7 +196,6 @@ export default function Scanner() {
       video
         .play()
         .then(() => {
-          console.log("Video is playing");
           setCameraReady(true);
         })
         .catch((err) => {
@@ -206,7 +210,7 @@ export default function Scanner() {
     }
   };
 
-  // 🔁 React to cameraActive changes (ensures video is mounted before start)
+  // React to cameraActive changes
   useEffect(() => {
     if (cameraActive) {
       startCameraStream();
@@ -338,7 +342,7 @@ export default function Scanner() {
     }
   };
 
-  // --- Camera-based capture + scan ---
+  // --- Camera-based capture + scan (cropping to frame) ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -364,18 +368,23 @@ export default function Scanner() {
     const videoHeight = video.videoHeight;
 
     if (!videoWidth || !videoHeight) {
-      console.warn("Video width/height are zero:", videoWidth, videoHeight);
       setCameraError(
         "Camera resolution is not ready yet. Try again in a second."
       );
       return;
     }
 
-    const targetWidth = 800;
-    const scale = videoWidth > targetWidth ? targetWidth / videoWidth : 1;
+    // Compute the region (in video coordinates) that corresponds to the overlay frame
+    const sx = CARD_FRAME.x * videoWidth;
+    const sy = CARD_FRAME.y * videoHeight;
+    const sWidth = CARD_FRAME.width * videoWidth;
+    const sHeight = CARD_FRAME.height * videoHeight;
 
-    const canvasWidth = videoWidth * scale;
-    const canvasHeight = videoHeight * scale;
+    // Scale the cropped region to a reasonable size for OCR
+    const targetWidth = 800;
+    const scale = sWidth > targetWidth ? targetWidth / sWidth : 1;
+    const canvasWidth = sWidth * scale;
+    const canvasHeight = sHeight * scale;
 
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
@@ -386,12 +395,13 @@ export default function Scanner() {
       return;
     }
 
+    // Draw only the cropped region from the video into the canvas
     ctx.drawImage(
       video,
-      0,
-      0,
-      videoWidth,
-      videoHeight,
+      sx,
+      sy,
+      sWidth,
+      sHeight,
       0,
       0,
       canvasWidth,
@@ -449,8 +459,9 @@ export default function Scanner() {
       <header className="scanner-header">
         <h1 className="scanner-title">Scan Cards</h1>
         <p className="scanner-subtitle">
-          Use your camera or upload a photo of a Pokémon card. I’ll try to
-          detect the Pokémon and add it to your collection.
+          Use your camera or upload a photo of a Pokémon card. Line the card
+          up inside the frame and I’ll try to detect the Pokémon and add it to
+          your collection.
         </p>
       </header>
 
@@ -493,9 +504,22 @@ export default function Scanner() {
               muted
             />
             {!cameraReady && (
-              <div className="scanner-video-overlay">
+              <div className="scanner-video-overlay scanner-video-overlay--loading">
                 Initializing camera…
               </div>
+            )}
+
+            {cameraReady && (
+              <>
+                {/* Darkened mask + card frame */}
+                <div className="scanner-frame-mask" />
+                <div className="scanner-frame">
+                  <div className="scanner-frame-border" />
+                  <div className="scanner-frame-label">
+                    Align your card inside the frame
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}
