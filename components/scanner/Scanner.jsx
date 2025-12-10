@@ -16,19 +16,7 @@ import {
 const MAX_POKEMON = 1025;
 
 // Use multiple languages Tesseract can be configured for
-// (Make sure your Tesseract setup has these traineddata files available)
 const OCR_LANGS = "eng+jpn+kor+fra+deu";
-
-// Card frame: 2.5 x 3.5 ratio ≈ 0.714 (width/height)
-// We'll make it 60% wide and 84% tall => 0.6 / 0.84 ≈ 0.714
-// and center it nicely in the video.
-// These MUST match the CSS overlay values.
-const CARD_FRAME = {
-  x: 0.2,   // 20% from left
-  y: 0.08,  // 8% from top
-  width: 0.6,  // 60% width
-  height: 0.84 // 84% height
-};
 
 // --- Helpers ---
 
@@ -86,31 +74,20 @@ function detectLanguageFromText(text) {
       hasHangul = true;
       continue;
     }
-    // CJK Unified Ideographs (used by Japanese & Chinese)
+    // CJK Unified Ideographs
     if (code >= 0x4E00 && code <= 0x9FFF) {
       hasCjk = true;
       continue;
     }
   }
 
-  if (hasHangul) {
-    return "Korean (Hangul detected)";
-  }
-
-  if (hasHiraganaOrKatakana && hasCjk) {
+  if (hasHangul) return "Korean (Hangul detected)";
+  if (hasHiraganaOrKatakana && hasCjk)
     return "Japanese (Kana + Kanji detected)";
-  }
+  if (hasHiraganaOrKatakana) return "Japanese (Kana detected)";
+  if (hasCjk) return "CJK (Chinese/Japanese Kanji)";
 
-  if (hasHiraganaOrKatakana) {
-    return "Japanese (Kana detected)";
-  }
-
-  if (hasCjk) {
-    // Could be Chinese or Japanese Kanji-only; we lump it for now.
-    return "CJK (Chinese/Japanese Kanji)";
-  }
-
-  // Fallback: probably a Latin script language
+  // Fallback: Latin scripts
   return "Latin (English/French/German/etc.)";
 }
 
@@ -140,6 +117,8 @@ export default function Scanner() {
   // Camera state
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const frameRef = useRef(null); // NEW: reference to the CSS frame overlay
+
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -325,7 +304,7 @@ export default function Scanner() {
     try {
       const result = await Tesseract.recognize(imageUrl, OCR_LANGS, {
         logger: () => {
-          // optionally show progress here
+          // optional progress
         },
       });
 
@@ -407,10 +386,11 @@ export default function Scanner() {
     }
   };
 
-  // --- Camera-based capture + scan (cropping to card-shaped frame) ---
+  // --- Camera-based capture + scan (crop to actual CSS frame) ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    const frame = frameRef.current;
 
     if (!cameraActive) {
       setCameraError("Camera is not active.");
@@ -424,7 +404,7 @@ export default function Scanner() {
       return;
     }
 
-    if (!video || !canvas) {
+    if (!video || !canvas || !frame) {
       setCameraError("Camera elements are not ready.");
       return;
     }
@@ -439,11 +419,18 @@ export default function Scanner() {
       return;
     }
 
-    // Compute the region (in video coordinates) that corresponds to the overlay frame
-    const sx = CARD_FRAME.x * videoWidth;
-    const sy = CARD_FRAME.y * videoHeight;
-    const sWidth = CARD_FRAME.width * videoWidth;
-    const sHeight = CARD_FRAME.height * videoHeight;
+    // Get DOM rectangles
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+
+    // Map CSS pixels -> video pixels
+    const scaleX = videoWidth / videoRect.width;
+    const scaleY = videoHeight / videoRect.height;
+
+    const sx = (frameRect.left - videoRect.left) * scaleX;
+    const sy = (frameRect.top - videoRect.top) * scaleY;
+    const sWidth = frameRect.width * scaleX;
+    const sHeight = frameRect.height * scaleY;
 
     // Scale the cropped region to a reasonable size for OCR
     const targetWidth = 800;
@@ -579,7 +566,7 @@ export default function Scanner() {
               <>
                 {/* Darkened mask + card-shaped frame */}
                 <div className="scanner-frame-mask" />
-                <div className="scanner-frame">
+                <div className="scanner-frame" ref={frameRef}>
                   <div className="scanner-frame-border" />
                   <div className="scanner-frame-label">
                     Align your card inside the frame

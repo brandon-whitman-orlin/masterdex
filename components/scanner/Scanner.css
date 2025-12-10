@@ -1,16 +1,19 @@
 .scanner-video-wrapper {
   position: relative;
-  max-width: 420px;
-  margin-top: 12px;
-  border-radius: 16px;
+  border-radius: var(--border-radius);
   overflow: hidden;
-  background: #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  padding: var(--font-size-base);
 }
 
 .scanner-video {
   display: block;
   width: 100%;
   height: auto;
+  border-radius: var(--border-radius);
 }
 
 .scanner-video-overlay--loading {
@@ -28,27 +31,28 @@
 .scanner-frame-mask {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 
 /* Card frame: must match CARD_FRAME */
 .scanner-frame {
   position: absolute;
-  left: 20%;   /* CARD_FRAME.x = 0.2 */
-  top: 8%;     /* CARD_FRAME.y = 0.08 */
-  width: 60%;  /* CARD_FRAME.width = 0.6 */
-  height: 84%; /* CARD_FRAME.height = 0.84 */
+  width: 40%;
+  aspect-ratio: 2.5 / 3.5;
   pointer-events: none;
+  /* plus whatever centering you like, e.g.: */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
+
 
 /* Visible border of the frame */
 .scanner-frame-border {
   position: absolute;
   inset: 0;
-  border-radius: 12px;
-  border: 2px solid var(--color-primary, #ae637e);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  border-radius: var(--border-radius);
+  border: 2px solid var(--color-primary);
 }
 
 /* Small label under the frame */
