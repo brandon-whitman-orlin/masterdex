@@ -5,6 +5,7 @@ import Home from "../pages/home/Home";
 import About from "../pages/about/About";
 import MyCollection from "../pages/mycollection/MyCollection";
 import MyBinders from "../pages/mybinders/MyBinders";
+import MyScans from "../pages/myscans/MyScans";
 import Contact from "../pages/contact/Contact";
 
 import "./App.css";
@@ -20,6 +21,7 @@ const App = () => {
         <Route path="/about" element={<About />} />
         <Route path="/mycollection" element={<MyCollection />} /> 
         <Route path="/mybinders" element={<MyBinders />} /> 
+        <Route path="/myscans" element={<MyScans />} /> 
         <Route path="/contact" element={<Contact />} />
       </Routes>
     </div>

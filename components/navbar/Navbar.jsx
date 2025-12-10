@@ -65,6 +65,9 @@ const Navbar = ({ children }) => {
                 <a tabIndex="0" href="/mycollection">
                   Collection
                 </a>
+                 <a tabIndex="0" href="/mybinders">
+                  Binders
+                </a>
                 <button tabIndex="0" onClick={logout}>
                   Sign out
                 </button>
