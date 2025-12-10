@@ -82,7 +82,10 @@ export default function Scanner() {
         setDexError(null);
 
         const res = await fetch(
-          `https://pokeapi.co/api/v2/pokemon?limit=${MAX_POKEMON}&offset=0`
+          `https://pokeapi.co/api/v2/pokemon?limit={MAX_POKEMON}&offset=0`.replace(
+            "{MAX_POKEMON}",
+            MAX_POKEMON
+          )
         );
 
         if (!res.ok) {
@@ -151,18 +154,17 @@ export default function Scanner() {
   }, [user]);
 
   // --- Camera start/stop helpers ---
-  const stopCamera = () => {
+  const stopCameraStream = () => {
     const video = videoRef.current;
     if (video && video.srcObject) {
       const tracks = video.srcObject.getTracks();
       tracks.forEach((t) => t.stop());
       video.srcObject = null;
     }
-    setCameraActive(false);
     setCameraReady(false);
   };
 
-  const startCamera = async () => {
+  const startCameraStream = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError("Camera is not supported in this browser.");
       return;
@@ -178,40 +180,46 @@ export default function Scanner() {
       });
 
       const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-
-        // When metadata is loaded, we know videoWidth/videoHeight are available
-        const onLoadedMetadata = () => {
-          setCameraReady(true);
-          // Some browsers need an explicit play() call
-          video
-            .play()
-            .catch((err) =>
-              console.error("Video play() failed after metadata:", err)
-            );
-          video.removeEventListener("loadedmetadata", onLoadedMetadata);
-        };
-
-        video.addEventListener("loadedmetadata", onLoadedMetadata);
-
-        // In case metadata is already loaded (sometimes happens)
-        if (video.readyState >= 1) {
-          onLoadedMetadata();
-        }
+      if (!video) {
+        console.warn("Video element not mounted yet.");
+        // We won't set cameraReady here; effect may retry or the user can toggle again
+        return;
       }
 
-      setCameraActive(true);
+      video.srcObject = stream;
+
+      video
+        .play()
+        .then(() => {
+          console.log("Video is playing");
+          setCameraReady(true);
+        })
+        .catch((err) => {
+          console.error("Video play() failed:", err);
+          setCameraError(
+            "Camera stream started, but could not be played. Try reloading the page."
+          );
+        });
     } catch (err) {
       console.error("Failed to start camera:", err);
       setCameraError("Could not access camera. Check permissions.");
     }
   };
 
+  // 🔁 React to cameraActive changes (ensures video is mounted before start)
+  useEffect(() => {
+    if (cameraActive) {
+      startCameraStream();
+    } else {
+      stopCameraStream();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraActive]);
+
   // Clean up camera on unmount
   useEffect(() => {
     return () => {
-      stopCamera();
+      stopCameraStream();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -335,19 +343,28 @@ export default function Scanner() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!cameraActive || !cameraReady || !video) {
+    if (!cameraActive) {
+      setCameraError("Camera is not active.");
+      return;
+    }
+
+    if (!cameraReady) {
       setCameraError(
         "Camera is still initializing. Wait a moment and try again."
       );
       return;
     }
 
-    if (!canvas) return;
+    if (!video || !canvas) {
+      setCameraError("Camera elements are not ready.");
+      return;
+    }
 
     const videoWidth = video.videoWidth;
     const videoHeight = video.videoHeight;
 
     if (!videoWidth || !videoHeight) {
+      console.warn("Video width/height are zero:", videoWidth, videoHeight);
       setCameraError(
         "Camera resolution is not ready yet. Try again in a second."
       );
@@ -364,7 +381,10 @@ export default function Scanner() {
     canvas.height = canvasHeight;
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      setCameraError("Could not get canvas context.");
+      return;
+    }
 
     ctx.drawImage(
       video,
@@ -440,13 +460,7 @@ export default function Scanner() {
           <button
             type="button"
             className="scanner-camera-toggle"
-            onClick={() => {
-              if (cameraActive) {
-                stopCamera();
-              } else {
-                startCamera();
-              }
-            }}
+            onClick={() => setCameraActive((prev) => !prev)}
           >
             {cameraActive ? "Stop Camera" : "Start Camera"}
           </button>
