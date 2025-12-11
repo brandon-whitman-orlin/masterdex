@@ -37,7 +37,7 @@
 /* Card frame: must match CARD_FRAME */
 .scanner-frame {
   position: absolute;
-  height: 80%;
+  height: 70%;
   aspect-ratio: 2.5 / 3.5;
   pointer-events: none;
   /* top: 50%; */

@@ -18,6 +18,9 @@ const MAX_POKEMON = 1025;
 // Use multiple languages Tesseract can be configured for
 const OCR_LANGS = "eng+jpn+kor+fra+deu";
 
+// Only scan the top X% of the card frame to focus on the name area
+const NAME_BAND_RATIO = 0.2; // top 20%
+
 // --- Helpers ---
 
 function normalizeText(str) {
@@ -117,7 +120,7 @@ export default function Scanner() {
   // Camera state
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const frameRef = useRef(null); // NEW: reference to the CSS frame overlay
+  const frameRef = useRef(null); // CSS frame overlay
 
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -386,7 +389,7 @@ export default function Scanner() {
     }
   };
 
-  // --- Camera-based capture + scan (crop to actual CSS frame) ---
+  // --- Camera-based capture + scan (crop to CSS frame, then top 20%) ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -427,10 +430,17 @@ export default function Scanner() {
     const scaleX = videoWidth / videoRect.width;
     const scaleY = videoHeight / videoRect.height;
 
-    const sx = (frameRect.left - videoRect.left) * scaleX;
-    const sy = (frameRect.top - videoRect.top) * scaleY;
-    const sWidth = frameRect.width * scaleX;
-    const sHeight = frameRect.height * scaleY;
+    // Full card frame region in video coordinates
+    const frameSx = (frameRect.left - videoRect.left) * scaleX;
+    const frameSy = (frameRect.top - videoRect.top) * scaleY;
+    const frameWidth = frameRect.width * scaleX;
+    const frameHeight = frameRect.height * scaleY;
+
+    // Focus on the top NAME_BAND_RATIO of the card frame
+    const sx = frameSx;
+    const sy = frameSy; // top of the frame
+    const sWidth = frameWidth;
+    const sHeight = frameHeight * NAME_BAND_RATIO;
 
     // Scale the cropped region to a reasonable size for OCR
     const targetWidth = 800;
@@ -447,7 +457,7 @@ export default function Scanner() {
       return;
     }
 
-    // Draw only the cropped region from the video into the canvas
+    // Draw only the cropped name band from the video into the canvas
     ctx.drawImage(
       video,
       sx,
