@@ -577,7 +577,7 @@ export default function Scanner() {
         // Luminance
         const v = 0.299 * r + 0.587 * g + 0.114 * b;
         // Simple threshold; tweak 140–180 to taste
-        const val = v > 160 ? 255 : 0;
+        const val = v > 120 ? 255 : 0;
 
         data[i] = val;     // R
         data[i + 1] = val; // G
