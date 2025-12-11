@@ -35,7 +35,7 @@ const LANG_CODE_TO_TESSERACT = {
 const NAME_BAND_RATIO = 0.2; // top 20%
 
 // Number of distinct frames to capture from the camera
-const FRAME_SAMPLES = 5; // you can bump this if you like
+const FRAME_SAMPLES = 3; // you can bump this if you like
 
 // --- Helpers ---
 
@@ -688,7 +688,7 @@ export default function Scanner() {
           const b = data[j + 2];
 
           const v = 0.299 * r + 0.587 * g + 0.114 * b;
-          const val = v > 120 ? 255 : 0; // you've tuned this threshold already
+          const val = v > 100 ? 255 : 0; // you've tuned this threshold already
 
           data[j] = val;
           data[j + 1] = val;
