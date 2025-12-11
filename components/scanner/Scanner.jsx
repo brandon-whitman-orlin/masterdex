@@ -14,7 +14,6 @@ import {
 } from "firebase/firestore";
 
 // All Pokémon names in multiple languages
-// Structure assumed:
 // { en: { "bulbasaur": 1, ... }, ja: { "オーベム": 606, ... }, ko: {...}, fr: {...}, de: {...} }
 import pokemonNames from "../../src/pokemon-names.json";
 
@@ -34,6 +33,9 @@ const LANG_CODE_TO_TESSERACT = {
 
 // Only scan the top X% of the card frame to focus on the name area
 const NAME_BAND_RATIO = 0.2; // top 20%
+
+// 🔁 Number of distinct frames to capture from the camera
+const FRAME_SAMPLES = 3; // bump to 5 if you want, at the cost of more OCR time
 
 // --- Helpers ---
 
@@ -366,7 +368,7 @@ export default function Scanner() {
       return { match: null, lastText };
     }
 
-    // Majority vote by dexNumber
+    // Majority vote by dexNumber within this single image
     const dexCounts = {};
     let bestDex = null;
     let bestCount = 0;
@@ -389,9 +391,11 @@ export default function Scanner() {
     return { match: chosen || null, lastText };
   }
 
-  // --- Full scan pipeline: language vote + name vote + optional Firestore write ---
-  async function runFullScan(imageUrl) {
-    if (!imageUrl) {
+  // 🔁 Full scan pipeline: now supports multiple imageUrls (frames)
+  async function runFullScan(imageInput) {
+    const imageUrls = Array.isArray(imageInput) ? imageInput : [imageInput];
+
+    if (!imageUrls.length) {
       setScanError("No image to scan.");
       return;
     }
@@ -403,28 +407,63 @@ export default function Scanner() {
     setDetectedLanguage(null);
 
     try {
-      // 1) Language detection (3 runs)
-      const langCode = await detectLanguageWithVoting(imageUrl);
+      // 1) Language detection across all frames
+      const frameLangs = [];
+      for (const url of imageUrls) {
+        const langForFrame = await detectLanguageWithVoting(url);
+        frameLangs.push(langForFrame);
+      }
+      const langCode = majorityVote(frameLangs) || "en";
       setDetectedLanguage(langCode);
 
       const langLabel = prettyLanguage(langCode);
 
-      // 2) Name detection with chosen language (3 runs)
-      const { match, lastText } = await detectPokemonWithLang(
-        imageUrl,
-        langCode
-      );
+      // 2) Name detection across all frames
+      const allMatches = [];
+      let lastText = "";
+
+      for (const url of imageUrls) {
+        const { match, lastText: t } = await detectPokemonWithLang(
+          url,
+          langCode
+        );
+        if (t) lastText = t;
+        if (match) allMatches.push(match);
+      }
 
       setOcrText(lastText || "");
 
-      if (!match) {
+      if (!allMatches.length) {
         setStatusMessage(
           `Detected card language as ${langLabel}, but couldn’t confidently read a Pokémon name from the top band.`
         );
         return;
       }
 
-      const { name, dexNumber } = match;
+      // Majority vote across *all frames* by dexNumber
+      const dexCounts = {};
+      let bestDex = null;
+      let bestCount = 0;
+
+      allMatches.forEach((m) => {
+        dexCounts[m.dexNumber] = (dexCounts[m.dexNumber] || 0) + 1;
+        if (dexCounts[m.dexNumber] > bestCount) {
+          bestCount = dexCounts[m.dexNumber];
+          bestDex = m.dexNumber;
+        }
+      });
+
+      if (!bestDex) {
+        setStatusMessage(
+          `Detected card language as ${langLabel}, but couldn’t confidently agree on which Pokémon it is.`
+        );
+        return;
+      }
+
+      const chosen =
+        allMatches.find((m) => m.dexNumber === bestDex) || allMatches[0];
+
+      const { name, dexNumber } = chosen;
       const formattedName =
         typeof name === "string"
           ? name.charAt(0).toUpperCase() + name.slice(1)
@@ -483,7 +522,7 @@ export default function Scanner() {
     }
   };
 
-  // --- Camera-based capture + scan (crop to CSS frame, then top 20%, then preprocess) ---
+  // --- Camera-based capture + scan (multiple frames, crop + preprocess each) ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -536,71 +575,82 @@ export default function Scanner() {
     const sWidth = frameWidth;
     const sHeight = frameHeight * NAME_BAND_RATIO;
 
-    // Scale the cropped region to a reasonable size for OCR
-    const targetWidth = 800;
-    const scale = sWidth > targetWidth ? targetWidth / sWidth : 1;
-    const canvasWidth = sWidth * scale;
-    const canvasHeight = sHeight * scale;
-
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       setCameraError("Could not get canvas context.");
       return;
     }
 
-    // Draw the cropped region from the video into the canvas
-    ctx.drawImage(
-      video,
-      sx,
-      sy,
-      sWidth,
-      sHeight,
-      0,
-      0,
-      canvasWidth,
-      canvasHeight
-    );
+    const imageUrls = [];
 
-    // --- Simple image preprocessing: grayscale + threshold (binarization) ---
-    try {
-      const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-      const data = imageData.data;
+    for (let i = 0; i < FRAME_SAMPLES; i++) {
+      // Scale the cropped region to a reasonable size for OCR
+      const targetWidth = 800;
+      const scale = sWidth > targetWidth ? targetWidth / sWidth : 1;
+      const canvasWidth = sWidth * scale;
+      const canvasHeight = sHeight * scale;
 
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
 
-        // Luminance
-        const v = 0.299 * r + 0.587 * g + 0.114 * b;
-        // Simple threshold; tweak 140–180 to taste
-        const val = v > 120 ? 255 : 0;
+      // Draw the cropped region from the video into the canvas
+      ctx.drawImage(
+        video,
+        sx,
+        sy,
+        sWidth,
+        sHeight,
+        0,
+        0,
+        canvasWidth,
+        canvasHeight
+      );
 
-        data[i] = val;     // R
-        data[i + 1] = val; // G
-        data[i + 2] = val; // B
-        // alpha unchanged
+      // Simple image preprocessing: grayscale + threshold (binarization)
+      try {
+        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        const data = imageData.data;
+
+        for (let j = 0; j < data.length; j += 4) {
+          const r = data[j];
+          const g = data[j + 1];
+          const b = data[j + 2];
+
+          const v = 0.299 * r + 0.587 * g + 0.114 * b;
+          const val = v > 120 ? 255 : 0; // threshold; you've tuned this already
+
+          data[j] = val;
+          data[j + 1] = val;
+          data[j + 2] = val;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+      } catch (err) {
+        console.warn("Could not preprocess image (threshold):", err);
       }
 
-      ctx.putImageData(imageData, 0, 0);
-    } catch (err) {
-      console.warn("Could not preprocess image (threshold):", err);
-      // If this fails, we still have the original image drawn.
+      const dataUrl = canvas.toDataURL("image/png");
+      imageUrls.push(dataUrl);
+
+      // Small delay to let the camera update between frames
+      if (i < FRAME_SAMPLES - 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
     }
 
-    const dataUrl = canvas.toDataURL("image/png");
+    // Show the first frame as the preview
+    if (imageUrls.length > 0) {
+      setImagePreviewUrl(imageUrls[0]);
+    }
 
-    setImagePreviewUrl(dataUrl);
     setImageFile(null);
     setScanError(null);
     setStatusMessage("");
     setOcrText("");
     setDetectedLanguage(null);
 
-    await runFullScan(dataUrl);
+    await runFullScan(imageUrls);
   };
 
   return (
@@ -609,8 +659,8 @@ export default function Scanner() {
         <h1 className="scanner-title">Scan Cards</h1>
         <p className="scanner-subtitle">
           Use your camera or upload a photo of a Pokémon card. I’ll detect the card’s
-          language, read the name band a few times, and try to add the correct
-          Pokémon to your collection.
+          language, read the name band multiple times across multiple frames, and
+          try to add the correct Pokémon to your collection.
         </p>
       </header>
 
