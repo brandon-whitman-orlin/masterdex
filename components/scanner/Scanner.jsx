@@ -34,8 +34,8 @@ const LANG_CODE_TO_TESSERACT = {
 // Only scan the top X% of the card frame to focus on the name area
 const NAME_BAND_RATIO = 0.2; // top 20%
 
-// 🔁 Number of distinct frames to capture from the camera
-const FRAME_SAMPLES = 3; // bump to 5 if you want, at the cost of more OCR time
+// Number of distinct frames to capture from the camera
+const FRAME_SAMPLES = 5; // you can bump this if you like
 
 // --- Helpers ---
 
@@ -148,6 +148,61 @@ function normalizeForMatching(text, langCode) {
     .trim();
 }
 
+// --- NEW: Levenshtein distance for fuzzy matching ---
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const dp = Array.from({ length: a.length + 1 }, () =>
+    new Array(b.length + 1).fill(0)
+  );
+
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1, // deletion
+        dp[i][j - 1] + 1, // insertion
+        dp[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+
+  return dp[a.length][b.length];
+}
+
+// --- NEW: best distance between candidate and any substring of the text ---
+function bestSubstringDistance(textNorm, candidateNorm) {
+  if (!textNorm || !candidateNorm) return Infinity;
+
+  const tLen = textNorm.length;
+  const cLen = candidateNorm.length;
+
+  if (cLen === 0) return Infinity;
+  if (tLen === 0) return Infinity;
+
+  // If candidate longer than text, compare once to whole text
+  if (cLen >= tLen) {
+    return levenshtein(candidateNorm, textNorm);
+  }
+
+  let minDist = Infinity;
+  for (let i = 0; i <= tLen - cLen; i++) {
+    const sub = textNorm.slice(i, i + cLen);
+    const d = levenshtein(candidateNorm, sub);
+    if (d < minDist) {
+      minDist = d;
+      if (minDist === 0) break; // can't do better
+    }
+  }
+
+  return minDist;
+}
+
 // Find best Pokémon match in OCR text using a specific language’s name map
 function findBestPokemonMatch(rawText, nameMap, langCode) {
   if (!rawText || !nameMap) return null;
@@ -161,12 +216,31 @@ function findBestPokemonMatch(rawText, nameMap, langCode) {
   for (const [name, dex] of Object.entries(nameMap)) {
     if (!dex || dex < 1 || dex > MAX_POKEMON) continue;
 
-    let candidateNorm = normalizeForMatching(name, langCode);
+    const candidateNorm = normalizeForMatching(name, langCode);
     if (!candidateNorm) continue;
 
+    // 1) Exact substring match: highest confidence
     if (textNorm.includes(candidateNorm)) {
-      // Longer matches are more specific; use length as score
-      const score = candidateNorm.length;
+      const score = candidateNorm.length + 100; // big bonus for exact
+      if (score > bestScore) {
+        bestScore = score;
+        bestName = name;
+        bestDex = dex;
+      }
+      continue;
+    }
+
+    // 2) Fuzzy match: allow small edit distance
+    const dist = bestSubstringDistance(textNorm, candidateNorm);
+    if (!Number.isFinite(dist)) continue;
+
+    // Allow 1-character difference for short names, up to 2 for longer ones
+    const maxAllowed =
+      candidateNorm.length <= 3 ? 1 : candidateNorm.length <= 6 ? 2 : 2;
+
+    if (dist <= maxAllowed) {
+      // Score: length minus penalty for distance
+      const score = candidateNorm.length - dist * 1.5;
       if (score > bestScore) {
         bestScore = score;
         bestName = name;
@@ -186,7 +260,7 @@ export default function Scanner() {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
 
-  // Owned tracking (so we can say “already in your collection”)
+  // Owned tracking
   const [ownedDex, setOwnedDex] = useState({});
 
   // Scan state
@@ -199,7 +273,7 @@ export default function Scanner() {
   // Camera state
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const frameRef = useRef(null); // CSS frame overlay
+  const frameRef = useRef(null);
 
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -288,7 +362,6 @@ export default function Scanner() {
     }
   };
 
-  // React to cameraActive changes
   useEffect(() => {
     if (cameraActive) {
       startCameraStream();
@@ -298,7 +371,6 @@ export default function Scanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraActive]);
 
-  // Clean up camera on unmount
   useEffect(() => {
     return () => {
       stopCameraStream();
@@ -385,13 +457,12 @@ export default function Scanner() {
       return { match: null, lastText };
     }
 
-    // Pick any match with that dexNumber as representative
     const chosen = matches.find((m) => m.dexNumber === bestDex);
 
     return { match: chosen || null, lastText };
   }
 
-  // 🔁 Full scan pipeline: now supports multiple imageUrls (frames)
+  // Full scan pipeline: supports multiple imageUrls (frames)
   async function runFullScan(imageInput) {
     const imageUrls = Array.isArray(imageInput) ? imageInput : [imageInput];
 
@@ -440,7 +511,7 @@ export default function Scanner() {
         return;
       }
 
-      // Majority vote across *all frames* by dexNumber
+      // Majority vote across all frames
       const dexCounts = {};
       let bestDex = null;
       let bestCount = 0;
@@ -617,7 +688,7 @@ export default function Scanner() {
           const b = data[j + 2];
 
           const v = 0.299 * r + 0.587 * g + 0.114 * b;
-          const val = v > 120 ? 255 : 0; // threshold; you've tuned this already
+          const val = v > 120 ? 255 : 0; // you've tuned this threshold already
 
           data[j] = val;
           data[j + 1] = val;
@@ -660,7 +731,8 @@ export default function Scanner() {
         <p className="scanner-subtitle">
           Use your camera or upload a photo of a Pokémon card. I’ll detect the card’s
           language, read the name band multiple times across multiple frames, and
-          try to add the correct Pokémon to your collection.
+          try to add the correct Pokémon to your collection — even if the OCR is
+          slightly off.
         </p>
       </header>
 
