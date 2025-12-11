@@ -37,15 +37,13 @@
 /* Card frame: must match CARD_FRAME */
 .scanner-frame {
   position: absolute;
-  width: 40%;
+  height: 80%;
   aspect-ratio: 2.5 / 3.5;
   pointer-events: none;
-  /* plus whatever centering you like, e.g.: */
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  /* top: 50%; */
+  /* left: 50%; */
+  /* transform: translate(-50%, -50%); */
 }
-
 
 /* Visible border of the frame */
 .scanner-frame-border {
@@ -59,7 +57,7 @@
 .scanner-frame-label {
   position: absolute;
   left: 50%;
-  bottom: -1.6rem;
+  bottom: -2rem;
   transform: translateX(-50%);
   font-size: 0.75rem;
   padding: 0.25rem 0.6rem;
