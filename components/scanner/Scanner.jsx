@@ -15,7 +15,7 @@ import {
 
 // All Pokémon names in multiple languages
 // Structure assumed:
-// { en: { "bulbasaur": 1, ... }, ja: { "フシギダネ": 1, ... }, ko: {...}, fr: {...}, de: {...} }
+// { en: { "bulbasaur": 1, ... }, ja: { "オーベム": 606, ... }, ko: {...}, fr: {...}, de: {...} }
 import pokemonNames from "../../src/pokemon-names.json";
 
 const MAX_POKEMON = 1025;
@@ -129,11 +129,28 @@ function getNameMapForLang(langCode) {
   return pokemonNames.en || {};
 }
 
+// Normalize text per language for matching
+function normalizeForMatching(text, langCode) {
+  if (!text) return "";
+
+  if (langCode === "ja" || langCode === "ko") {
+    // For Japanese/Korean, spaces are often OCR noise.
+    // Remove all whitespace characters.
+    return text.replace(/\s+/g, "");
+  }
+
+  // Latin languages: lowercase and normalize spaces a bit.
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // Find best Pokémon match in OCR text using a specific language’s name map
-function findBestPokemonMatch(rawText, nameMap) {
+function findBestPokemonMatch(rawText, nameMap, langCode) {
   if (!rawText || !nameMap) return null;
 
-  const text = rawText.toLowerCase();
+  const textNorm = normalizeForMatching(rawText, langCode);
 
   let bestName = null;
   let bestDex = null;
@@ -142,12 +159,12 @@ function findBestPokemonMatch(rawText, nameMap) {
   for (const [name, dex] of Object.entries(nameMap)) {
     if (!dex || dex < 1 || dex > MAX_POKEMON) continue;
 
-    const candidate = name.toLowerCase();
-    if (!candidate) continue;
+    let candidateNorm = normalizeForMatching(name, langCode);
+    if (!candidateNorm) continue;
 
-    if (text.includes(candidate)) {
+    if (textNorm.includes(candidateNorm)) {
       // Longer matches are more specific; use length as score
-      const score = candidate.length;
+      const score = candidateNorm.length;
       if (score > bestScore) {
         bestScore = score;
         bestName = name;
@@ -307,7 +324,7 @@ export default function Scanner() {
   async function ocrOnce(imageUrl, langs) {
     const result = await Tesseract.recognize(imageUrl, langs, {
       logger: () => {
-        // you can track progress here if desired
+        // optional progress
       },
     });
     return result?.data?.text || "";
@@ -339,7 +356,7 @@ export default function Scanner() {
       const text = await ocrOnce(imageUrl, tesseractLang);
       lastText = text || lastText;
 
-      const match = findBestPokemonMatch(text, nameMap);
+      const match = findBestPokemonMatch(text, nameMap, langCode);
       if (match) {
         matches.push(match);
       }
@@ -409,7 +426,9 @@ export default function Scanner() {
 
       const { name, dexNumber } = match;
       const formattedName =
-        name.charAt(0).toUpperCase() + name.slice(1);
+        typeof name === "string"
+          ? name.charAt(0).toUpperCase() + name.slice(1)
+          : String(name);
 
       if (!user) {
         setStatusMessage(
@@ -464,7 +483,7 @@ export default function Scanner() {
     }
   };
 
-  // --- Camera-based capture + scan (crop to CSS frame, then top 20%) ---
+  // --- Camera-based capture + scan (crop to CSS frame, then top 20%, then preprocess) ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -532,7 +551,7 @@ export default function Scanner() {
       return;
     }
 
-    // Draw only the cropped name band from the video into the canvas
+    // Draw the cropped region from the video into the canvas
     ctx.drawImage(
       video,
       sx,
@@ -544,6 +563,33 @@ export default function Scanner() {
       canvasWidth,
       canvasHeight
     );
+
+    // --- Simple image preprocessing: grayscale + threshold (binarization) ---
+    try {
+      const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+      const data = imageData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // Luminance
+        const v = 0.299 * r + 0.587 * g + 0.114 * b;
+        // Simple threshold; tweak 140–180 to taste
+        const val = v > 160 ? 255 : 0;
+
+        data[i] = val;     // R
+        data[i + 1] = val; // G
+        data[i + 2] = val; // B
+        // alpha unchanged
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    } catch (err) {
+      console.warn("Could not preprocess image (threshold):", err);
+      // If this fails, we still have the original image drawn.
+    }
 
     const dataUrl = canvas.toDataURL("image/png");
 
