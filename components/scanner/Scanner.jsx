@@ -13,11 +13,13 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 
-// All Pokémon names in multiple languages
-// { en: { "bulbasaur": 1, ... }, ja: { "オーベム": 606, ... }, ko: {...}, fr: {...}, de: {...} }
 import pokemonNames from "../../src/pokemon-names.json";
 
 const MAX_POKEMON = 1025;
+
+// --- Binder layout config (match your Calculator logic) ---
+const SLOTS_PER_BINDER = 360; // 40 pages × 9 slots
+const SLOTS_PER_PAGE = 9;
 
 // Phase 1: language detection
 const OCR_LANGS_MULTI = "eng+jpn+kor+fra+deu";
@@ -31,13 +33,41 @@ const LANG_CODE_TO_TESSERACT = {
   de: "deu",
 };
 
-// Only scan the top X% of the card frame to focus on the name area
-const NAME_BAND_RATIO = 0.2; // top 20%
+const NAME_BAND_RATIO = 0.2; // top 20% of the card
+const FRAME_SAMPLES = 3; // number of distinct frames to capture from camera
 
-// Number of distinct frames to capture from the camera
-const FRAME_SAMPLES = 3; // you can bump this if you like
+// --- Helper: slot math (binder/page/slot) ---
+function findSlot(pokedexNumber) {
+  if (
+    !Number.isInteger(pokedexNumber) ||
+    pokedexNumber < 1 ||
+    pokedexNumber > MAX_POKEMON
+  ) {
+    return { error: `Pokédex number must be between 1 and ${MAX_POKEMON}.` };
+  }
 
-// --- Helpers ---
+  const zeroBasedIndex = pokedexNumber - 1;
+
+  const binderIndex = Math.floor(zeroBasedIndex / SLOTS_PER_BINDER);
+  const binder = binderIndex + 1;
+
+  const positionInBinder = zeroBasedIndex % SLOTS_PER_BINDER;
+  const slotInBinder = positionInBinder + 1;
+
+  const pageIndex = Math.floor(positionInBinder / SLOTS_PER_PAGE);
+  const page = pageIndex + 1;
+
+  const slotOnPage = (positionInBinder % SLOTS_PER_PAGE) + 1;
+
+  return {
+    binder,
+    page,
+    slotOnPage,
+    slotInBinder,
+  };
+}
+
+// --- OCR helpers + fuzzy matching ---
 
 function prettyLanguage(langCode) {
   switch (langCode) {
@@ -56,7 +86,6 @@ function prettyLanguage(langCode) {
   }
 }
 
-// Simple language detection: JA / KO by script, FR/DE by accents, else EN (Latin)
 function detectLanguageFromText(text) {
   if (!text) return "en";
 
@@ -71,28 +100,24 @@ function detectLanguageFromText(text) {
   for (const ch of text) {
     const code = ch.codePointAt(0);
 
-    // Hiragana: 3040–309F
     if (code >= 0x3040 && code <= 0x309F) {
+      // Hiragana
       hasHiraganaOrKatakana = true;
       continue;
     }
-    // Katakana: 30A0–30FF
     if (code >= 0x30A0 && code <= 0x30FF) {
+      // Katakana
       hasHiraganaOrKatakana = true;
       continue;
     }
-    // Hangul syllables: AC00–D7AF
     if (code >= 0xAC00 && code <= 0xD7AF) {
+      // Hangul
       hasHangul = true;
       continue;
     }
 
-    if (frChars.includes(ch)) {
-      hasFrAccent = true;
-    }
-    if (deChars.includes(ch)) {
-      hasDeAccent = true;
-    }
+    if (frChars.includes(ch)) hasFrAccent = true;
+    if (deChars.includes(ch)) hasDeAccent = true;
   }
 
   if (hasHangul) return "ko";
@@ -100,11 +125,9 @@ function detectLanguageFromText(text) {
   if (hasFrAccent) return "fr";
   if (hasDeAccent) return "de";
 
-  // Fallback: Latin script, treat as English for now
   return "en";
 }
 
-// Majority vote helper
 function majorityVote(values) {
   const counts = {};
   let bestValue = null;
@@ -122,33 +145,25 @@ function majorityVote(values) {
   return bestValue;
 }
 
-// Get language-specific name map from pokemonNames.json
 function getNameMapForLang(langCode) {
   const map = pokemonNames[langCode];
   if (map && Object.keys(map).length > 0) return map;
-
-  // Fallback to English if something goes wrong
   return pokemonNames.en || {};
 }
 
-// Normalize text per language for matching
 function normalizeForMatching(text, langCode) {
   if (!text) return "";
 
   if (langCode === "ja" || langCode === "ko") {
-    // For Japanese/Korean, spaces are often OCR noise.
-    // Remove all whitespace characters.
     return text.replace(/\s+/g, "");
   }
 
-  // Latin languages: lowercase and normalize spaces a bit.
   return text
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
 }
 
-// --- NEW: Levenshtein distance for fuzzy matching ---
 function levenshtein(a, b) {
   if (a === b) return 0;
   if (!a.length) return b.length;
@@ -165,9 +180,9 @@ function levenshtein(a, b) {
     for (let j = 1; j <= b.length; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       dp[i][j] = Math.min(
-        dp[i - 1][j] + 1, // deletion
-        dp[i][j - 1] + 1, // insertion
-        dp[i - 1][j - 1] + cost // substitution
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
       );
     }
   }
@@ -175,7 +190,6 @@ function levenshtein(a, b) {
   return dp[a.length][b.length];
 }
 
-// --- NEW: best distance between candidate and any substring of the text ---
 function bestSubstringDistance(textNorm, candidateNorm) {
   if (!textNorm || !candidateNorm) return Infinity;
 
@@ -185,7 +199,6 @@ function bestSubstringDistance(textNorm, candidateNorm) {
   if (cLen === 0) return Infinity;
   if (tLen === 0) return Infinity;
 
-  // If candidate longer than text, compare once to whole text
   if (cLen >= tLen) {
     return levenshtein(candidateNorm, textNorm);
   }
@@ -196,14 +209,13 @@ function bestSubstringDistance(textNorm, candidateNorm) {
     const d = levenshtein(candidateNorm, sub);
     if (d < minDist) {
       minDist = d;
-      if (minDist === 0) break; // can't do better
+      if (minDist === 0) break;
     }
   }
 
   return minDist;
 }
 
-// Find best Pokémon match in OCR text using a specific language’s name map
 function findBestPokemonMatch(rawText, nameMap, langCode) {
   if (!rawText || !nameMap) return null;
 
@@ -219,9 +231,9 @@ function findBestPokemonMatch(rawText, nameMap, langCode) {
     const candidateNorm = normalizeForMatching(name, langCode);
     if (!candidateNorm) continue;
 
-    // 1) Exact substring match: highest confidence
+    // Exact substring match
     if (textNorm.includes(candidateNorm)) {
-      const score = candidateNorm.length + 100; // big bonus for exact
+      const score = candidateNorm.length + 100;
       if (score > bestScore) {
         bestScore = score;
         bestName = name;
@@ -230,16 +242,13 @@ function findBestPokemonMatch(rawText, nameMap, langCode) {
       continue;
     }
 
-    // 2) Fuzzy match: allow small edit distance
     const dist = bestSubstringDistance(textNorm, candidateNorm);
     if (!Number.isFinite(dist)) continue;
 
-    // Allow 1-character difference for short names, up to 2 for longer ones
     const maxAllowed =
       candidateNorm.length <= 3 ? 1 : candidateNorm.length <= 6 ? 2 : 2;
 
     if (dist <= maxAllowed) {
-      // Score: length minus penalty for distance
       const score = candidateNorm.length - dist * 1.5;
       if (score > bestScore) {
         bestScore = score;
@@ -253,22 +262,27 @@ function findBestPokemonMatch(rawText, nameMap, langCode) {
   return { name: bestName, dexNumber: bestDex, score: bestScore };
 }
 
+// --- Component ---
+
 export default function Scanner() {
   const { user } = useAuth();
 
-  // File-based scanning state
   const [imageFile, setImageFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
 
-  // Owned tracking
   const [ownedDex, setOwnedDex] = useState({});
 
-  // Scan state
   const [scanning, setScanning] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [scanError, setScanError] = useState(null);
   const [ocrText, setOcrText] = useState("");
+
+  // NEW: confirmation & placement state
+  const [pendingMatch, setPendingMatch] = useState(null);
+  // pendingMatch: { dexNumber, name, langCode, alreadyOwned }
+  const [placementInfo, setPlacementInfo] = useState(null);
+  const [savingMatch, setSavingMatch] = useState(false);
 
   // Camera state
   const videoRef = useRef(null);
@@ -311,7 +325,7 @@ export default function Scanner() {
     return () => unsubscribe();
   }, [user]);
 
-  // --- Camera start/stop helpers ---
+  // --- Camera start/stop ---
   const stopCameraStream = () => {
     const video = videoRef.current;
     if (video && video.srcObject) {
@@ -388,23 +402,22 @@ export default function Scanner() {
     setStatusMessage("");
     setOcrText("");
     setDetectedLanguage(null);
+    setPendingMatch(null);
+    setPlacementInfo(null);
 
     const url = URL.createObjectURL(file);
     setImagePreviewUrl(url);
   };
 
-  // --- OCR helpers ---
+  // --- OCR wrappers ---
 
   async function ocrOnce(imageUrl, langs) {
     const result = await Tesseract.recognize(imageUrl, langs, {
-      logger: () => {
-        // optional progress
-      },
+      logger: () => {},
     });
     return result?.data?.text || "";
   }
 
-  // Phase 1: run OCR 3 times, vote on language
   async function detectLanguageWithVoting(imageUrl) {
     const langVotes = [];
 
@@ -418,7 +431,6 @@ export default function Scanner() {
     return votedLang;
   }
 
-  // Phase 2: run OCR 3 times with chosen language, vote on Pokémon name
   async function detectPokemonWithLang(imageUrl, langCode) {
     const tesseractLang = LANG_CODE_TO_TESSERACT[langCode] || "eng";
     const nameMap = getNameMapForLang(langCode);
@@ -431,16 +443,14 @@ export default function Scanner() {
       lastText = text || lastText;
 
       const match = findBestPokemonMatch(text, nameMap, langCode);
-      if (match) {
-        matches.push(match);
-      }
+      if (match) matches.push(match);
     }
 
     if (matches.length === 0) {
       return { match: null, lastText };
     }
 
-    // Majority vote by dexNumber within this single image
+    // Majority vote within one image
     const dexCounts = {};
     let bestDex = null;
     let bestCount = 0;
@@ -458,11 +468,10 @@ export default function Scanner() {
     }
 
     const chosen = matches.find((m) => m.dexNumber === bestDex);
-
     return { match: chosen || null, lastText };
   }
 
-  // Full scan pipeline: supports multiple imageUrls (frames)
+  // --- Full scan pipeline (now sets pendingMatch instead of writing immediately) ---
   async function runFullScan(imageInput) {
     const imageUrls = Array.isArray(imageInput) ? imageInput : [imageInput];
 
@@ -476,9 +485,11 @@ export default function Scanner() {
     setStatusMessage("");
     setOcrText("");
     setDetectedLanguage(null);
+    setPendingMatch(null);
+    setPlacementInfo(null);
 
     try {
-      // 1) Language detection across all frames
+      // 1) Language detection across frames
       const frameLangs = [];
       for (const url of imageUrls) {
         const langForFrame = await detectLanguageWithVoting(url);
@@ -486,10 +497,9 @@ export default function Scanner() {
       }
       const langCode = majorityVote(frameLangs) || "en";
       setDetectedLanguage(langCode);
-
       const langLabel = prettyLanguage(langCode);
 
-      // 2) Name detection across all frames
+      // 2) Name detection across frames
       const allMatches = [];
       let lastText = "";
 
@@ -511,7 +521,6 @@ export default function Scanner() {
         return;
       }
 
-      // Majority vote across all frames
       const dexCounts = {};
       let bestDex = null;
       let bestCount = 0;
@@ -540,35 +549,33 @@ export default function Scanner() {
           ? name.charAt(0).toUpperCase() + name.slice(1)
           : String(name);
 
+      const alreadyOwned = !!ownedDex[dexNumber];
+
+      // If user not signed in, we still show the guess but can't add
       if (!user) {
+        setPendingMatch({
+          dexNumber,
+          name: formattedName,
+          langCode,
+          alreadyOwned: false,
+        });
         setStatusMessage(
-          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card, but you’re not signed in. Sign in to save it to your collection.`
+          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card. Sign in to add it to your collection.`
         );
         return;
       }
 
-      const alreadyOwned = !!ownedDex[dexNumber];
+      // User is signed in → ask them to confirm, then optionally add
+      setPendingMatch({
+        dexNumber,
+        name: formattedName,
+        langCode,
+        alreadyOwned,
+      });
 
-      await setDoc(
-        doc(db, "users", user.uid, "collection", String(dexNumber)),
-        {
-          dexNumber,
-          name: formattedName,
-          language: langCode,
-          addedAt: serverTimestamp(),
-        },
-        { merge: true }
+      setStatusMessage(
+        `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card. Please confirm below.`
       );
-
-      if (alreadyOwned) {
-        setStatusMessage(
-          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card. It’s already in your collection.`
-        );
-      } else {
-        setStatusMessage(
-          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card and added it to your collection!`
-        );
-      }
     } catch (err) {
       console.error("Failed to scan card:", err);
       setScanError("Something went wrong while scanning this card.");
@@ -593,7 +600,7 @@ export default function Scanner() {
     }
   };
 
-  // --- Camera-based capture + scan (multiple frames, crop + preprocess each) ---
+  // --- Camera-based capture + scan (multi-frame) ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -626,23 +633,19 @@ export default function Scanner() {
       return;
     }
 
-    // Get DOM rectangles
     const videoRect = video.getBoundingClientRect();
     const frameRect = frame.getBoundingClientRect();
 
-    // Map CSS pixels -> video pixels
     const scaleX = videoWidth / videoRect.width;
     const scaleY = videoHeight / videoRect.height;
 
-    // Full card frame region in video coordinates
     const frameSx = (frameRect.left - videoRect.left) * scaleX;
     const frameSy = (frameRect.top - videoRect.top) * scaleY;
     const frameWidth = frameRect.width * scaleX;
     const frameHeight = frameRect.height * scaleY;
 
-    // Focus on the top NAME_BAND_RATIO of the card frame
     const sx = frameSx;
-    const sy = frameSy; // top of the frame
+    const sy = frameSy;
     const sWidth = frameWidth;
     const sHeight = frameHeight * NAME_BAND_RATIO;
 
@@ -655,7 +658,6 @@ export default function Scanner() {
     const imageUrls = [];
 
     for (let i = 0; i < FRAME_SAMPLES; i++) {
-      // Scale the cropped region to a reasonable size for OCR
       const targetWidth = 800;
       const scale = sWidth > targetWidth ? targetWidth / sWidth : 1;
       const canvasWidth = sWidth * scale;
@@ -664,7 +666,6 @@ export default function Scanner() {
       canvas.width = canvasWidth;
       canvas.height = canvasHeight;
 
-      // Draw the cropped region from the video into the canvas
       ctx.drawImage(
         video,
         sx,
@@ -677,7 +678,6 @@ export default function Scanner() {
         canvasHeight
       );
 
-      // Simple image preprocessing: grayscale + threshold (binarization)
       try {
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
         const data = imageData.data;
@@ -688,7 +688,7 @@ export default function Scanner() {
           const b = data[j + 2];
 
           const v = 0.299 * r + 0.587 * g + 0.114 * b;
-          const val = v > 110 ? 255 : 0; // you've tuned this threshold already
+          const val = v > 115 ? 255 : 0; // your tuned threshold
 
           data[j] = val;
           data[j + 1] = val;
@@ -703,14 +703,12 @@ export default function Scanner() {
       const dataUrl = canvas.toDataURL("image/png");
       imageUrls.push(dataUrl);
 
-      // Small delay to let the camera update between frames
       if (i < FRAME_SAMPLES - 1) {
         // eslint-disable-next-line no-await-in-loop
         await new Promise((resolve) => setTimeout(resolve, 120));
       }
     }
 
-    // Show the first frame as the preview
     if (imageUrls.length > 0) {
       setImagePreviewUrl(imageUrls[0]);
     }
@@ -720,8 +718,80 @@ export default function Scanner() {
     setStatusMessage("");
     setOcrText("");
     setDetectedLanguage(null);
+    setPendingMatch(null);
+    setPlacementInfo(null);
 
     await runFullScan(imageUrls);
+  };
+
+  // --- Confirmation flow ---
+
+  const handleRejectMatch = () => {
+    setPendingMatch(null);
+    setPlacementInfo(null);
+    setStatusMessage("Okay, let’s try scanning again or adjust the card.");
+  };
+
+  const handleConfirmMatch = () => {
+    if (!pendingMatch) return;
+    const slot = findSlot(pendingMatch.dexNumber);
+    if (slot.error) {
+      setPlacementInfo(null);
+      setStatusMessage(slot.error);
+      return;
+    }
+    setPlacementInfo(slot);
+    setStatusMessage(
+      `Great! Here’s where ${pendingMatch.name} goes in your binders.`
+    );
+  };
+
+  const handleAddConfirmedToCollection = async () => {
+    if (!user || !pendingMatch) return;
+
+    try {
+      setSavingMatch(true);
+
+      const ref = doc(
+        db,
+        "users",
+        user.uid,
+        "collection",
+        String(pendingMatch.dexNumber)
+      );
+
+      await setDoc(
+        ref,
+        {
+          dexNumber: pendingMatch.dexNumber,
+          name: pendingMatch.name,
+          language: pendingMatch.langCode,
+          addedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      const slot =
+        placementInfo || findSlot(pendingMatch.dexNumber) || null;
+
+      if (slot && !slot.error) {
+        setStatusMessage(
+          `Added ${pendingMatch.name} (#${pendingMatch.dexNumber}) to your collection.\nBinder ${slot.binder}, Page ${slot.page}, Slot ${slot.slotOnPage} (slot ${slot.slotInBinder} in that binder).`
+        );
+      } else {
+        setStatusMessage(
+          `Added ${pendingMatch.name} (#${pendingMatch.dexNumber}) to your collection.`
+        );
+      }
+
+      setPendingMatch(null);
+      setPlacementInfo(null);
+    } catch (err) {
+      console.error("Failed to save confirmed match:", err);
+      setStatusMessage("Could not save this Pokémon to your collection.");
+    } finally {
+      setSavingMatch(false);
+    }
   };
 
   return (
@@ -729,10 +799,9 @@ export default function Scanner() {
       <header className="scanner-header">
         <h1 className="scanner-title">Scan Cards</h1>
         <p className="scanner-subtitle">
-          Use your camera or upload a photo of a Pokémon card. I’ll detect the card’s
-          language, read the name band multiple times across multiple frames, and
-          try to add the correct Pokémon to your collection — even if the OCR is
-          slightly off.
+          Use your camera or upload a photo of a Pokémon card. I’ll detect the
+          card’s language, guess the Pokémon, let you confirm it, and then help
+          you place it in your binders.
         </p>
       </header>
 
@@ -782,7 +851,6 @@ export default function Scanner() {
 
             {cameraReady && (
               <>
-                {/* Darkened mask + card-shaped frame */}
                 <div className="scanner-frame-mask" />
                 <div className="scanner-frame" ref={frameRef}>
                   <div className="scanner-frame-border" />
@@ -795,7 +863,6 @@ export default function Scanner() {
           </div>
         )}
 
-        {/* Hidden canvas used for capturing frames */}
         <canvas ref={canvasRef} style={{ display: "none" }} />
       </section>
 
@@ -833,7 +900,11 @@ export default function Scanner() {
 
         {scanError && <div className="scanner-error">{scanError}</div>}
         {statusMessage && (
-          <div className="scanner-status">{statusMessage}</div>
+          <div className="scanner-status">
+            {statusMessage.split("\n").map((line, i) => (
+              <p key={i}>{line}</p>
+            ))}
+          </div>
         )}
 
         {detectedLanguage && (
@@ -845,6 +916,83 @@ export default function Scanner() {
           </div>
         )}
       </section>
+
+      {/* Confirmation + placement UI */}
+      {pendingMatch && (
+        <section className="scanner-confirm">
+          <h2>Did I get this right?</h2>
+          <div className="scanner-confirm-card">
+            <div className="scanner-confirm-main">
+              <div className="scanner-confirm-name">
+                {pendingMatch.name} <span>#{pendingMatch.dexNumber}</span>
+              </div>
+              <div className="scanner-confirm-lang">
+                Language: {prettyLanguage(pendingMatch.langCode)} (
+                {pendingMatch.langCode})
+              </div>
+              {pendingMatch.alreadyOwned && (
+                <div className="scanner-confirm-owned-note">
+                  This Pokémon is already in your collection.
+                </div>
+              )}
+            </div>
+
+            <div className="scanner-confirm-actions">
+              <button
+                type="button"
+                className="scanner-confirm-btn scanner-confirm-btn--yes"
+                onClick={handleConfirmMatch}
+              >
+                Yes, that looks right
+              </button>
+              <button
+                type="button"
+                className="scanner-confirm-btn scanner-confirm-btn--no"
+                onClick={handleRejectMatch}
+              >
+                No, that’s not right
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {pendingMatch && placementInfo && (
+        <section className="scanner-placement">
+          <h2>Binder placement</h2>
+          <div className="scanner-placement-details">
+            <p>
+              <strong>{pendingMatch.name}</strong> (# {pendingMatch.dexNumber})
+              goes here:
+            </p>
+            <ul>
+              <li>Binder: {placementInfo.binder}</li>
+              <li>Page: {placementInfo.page}</li>
+              <li>Slot on page: {placementInfo.slotOnPage}</li>
+              <li>Slot within binder: {placementInfo.slotInBinder}</li>
+            </ul>
+          </div>
+
+          {user ? (
+            <button
+              type="button"
+              className="scanner-scan-btn scanner-scan-btn--confirm-add"
+              onClick={handleAddConfirmedToCollection}
+              disabled={savingMatch}
+            >
+              {savingMatch
+                ? "Saving…"
+                : pendingMatch.alreadyOwned
+                ? "Update / Confirm in My Collection"
+                : "Add to My Collection"}
+            </button>
+          ) : (
+            <div className="scanner-error">
+              Sign in to save this Pokémon to your collection.
+            </div>
+          )}
+        </section>
+      )}
 
       {ocrText && (
         <section className="scanner-ocr-debug">
