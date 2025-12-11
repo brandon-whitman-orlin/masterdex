@@ -13,51 +13,58 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 
+// All Pokémon names in multiple languages
+// Structure assumed:
+// { en: { "bulbasaur": 1, ... }, ja: { "フシギダネ": 1, ... }, ko: {...}, fr: {...}, de: {...} }
+import pokemonNames from "../../src/pokemon-names.json";
+
 const MAX_POKEMON = 1025;
 
-// Use multiple languages Tesseract can be configured for
-const OCR_LANGS = "eng+jpn+kor+fra+deu";
+// Phase 1: language detection
+const OCR_LANGS_MULTI = "eng+jpn+kor+fra+deu";
+
+// Phase 2: per-language OCR
+const LANG_CODE_TO_TESSERACT = {
+  en: "eng",
+  ja: "jpn",
+  ko: "kor",
+  fr: "fra",
+  de: "deu",
+};
 
 // Only scan the top X% of the card frame to focus on the name area
 const NAME_BAND_RATIO = 0.2; // top 20%
 
 // --- Helpers ---
 
-function normalizeText(str) {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function prettyLanguage(langCode) {
+  switch (langCode) {
+    case "ja":
+      return "Japanese";
+    case "ko":
+      return "Korean";
+    case "fr":
+      return "French";
+    case "de":
+      return "German";
+    case "en":
+      return "English";
+    default:
+      return "Unknown";
+  }
 }
 
-function textContainsName(text, name) {
-  const pattern = new RegExp(`\\b${name}\\b`, "i");
-  return pattern.test(text);
-}
-
-function approxContains(text, nameCore) {
-  if (nameCore.length < 4) return false;
-  const prefix = nameCore.slice(0, 4);
-  return text.includes(prefix);
-}
-
-function formatName(name) {
-  if (!name) return "";
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-function getSpriteUrl(dexNumber) {
-  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dexNumber}.png`;
-}
-
-// Very simple heuristic to guess language/script of OCR text
+// Simple language detection: JA / KO by script, FR/DE by accents, else EN (Latin)
 function detectLanguageFromText(text) {
-  if (!text) return "Unknown";
+  if (!text) return "en";
 
   let hasHiraganaOrKatakana = false;
   let hasHangul = false;
-  let hasCjk = false;
+  let hasFrAccent = false;
+  let hasDeAccent = false;
+
+  const frChars = "éèàçêëïîôâùû";
+  const deChars = "äöüßÄÖÜ";
 
   for (const ch of text) {
     const code = ch.codePointAt(0);
@@ -77,21 +84,80 @@ function detectLanguageFromText(text) {
       hasHangul = true;
       continue;
     }
-    // CJK Unified Ideographs
-    if (code >= 0x4E00 && code <= 0x9FFF) {
-      hasCjk = true;
-      continue;
+
+    if (frChars.includes(ch)) {
+      hasFrAccent = true;
+    }
+    if (deChars.includes(ch)) {
+      hasDeAccent = true;
     }
   }
 
-  if (hasHangul) return "Korean (Hangul detected)";
-  if (hasHiraganaOrKatakana && hasCjk)
-    return "Japanese (Kana + Kanji detected)";
-  if (hasHiraganaOrKatakana) return "Japanese (Kana detected)";
-  if (hasCjk) return "CJK (Chinese/Japanese Kanji)";
+  if (hasHangul) return "ko";
+  if (hasHiraganaOrKatakana) return "ja";
+  if (hasFrAccent) return "fr";
+  if (hasDeAccent) return "de";
 
-  // Fallback: Latin scripts
-  return "Latin (English/French/German/etc.)";
+  // Fallback: Latin script, treat as English for now
+  return "en";
+}
+
+// Majority vote helper
+function majorityVote(values) {
+  const counts = {};
+  let bestValue = null;
+  let bestCount = 0;
+
+  values.forEach((v) => {
+    if (!v) return;
+    counts[v] = (counts[v] || 0) + 1;
+    if (counts[v] > bestCount) {
+      bestCount = counts[v];
+      bestValue = v;
+    }
+  });
+
+  return bestValue;
+}
+
+// Get language-specific name map from pokemonNames.json
+function getNameMapForLang(langCode) {
+  const map = pokemonNames[langCode];
+  if (map && Object.keys(map).length > 0) return map;
+
+  // Fallback to English if something goes wrong
+  return pokemonNames.en || {};
+}
+
+// Find best Pokémon match in OCR text using a specific language’s name map
+function findBestPokemonMatch(rawText, nameMap) {
+  if (!rawText || !nameMap) return null;
+
+  const text = rawText.toLowerCase();
+
+  let bestName = null;
+  let bestDex = null;
+  let bestScore = 0;
+
+  for (const [name, dex] of Object.entries(nameMap)) {
+    if (!dex || dex < 1 || dex > MAX_POKEMON) continue;
+
+    const candidate = name.toLowerCase();
+    if (!candidate) continue;
+
+    if (text.includes(candidate)) {
+      // Longer matches are more specific; use length as score
+      const score = candidate.length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestName = name;
+        bestDex = dex;
+      }
+    }
+  }
+
+  if (!bestName) return null;
+  return { name: bestName, dexNumber: bestDex, score: bestScore };
 }
 
 export default function Scanner() {
@@ -101,21 +167,15 @@ export default function Scanner() {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
 
-  // Pokédex name data
-  const [nameToDex, setNameToDex] = useState({});
-  const [dexToName, setDexToName] = useState({});
-  const [loadingDex, setLoadingDex] = useState(true);
-  const [dexError, setDexError] = useState(null);
-
-  // Owned tracking
+  // Owned tracking (so we can say “already in your collection”)
   const [ownedDex, setOwnedDex] = useState({});
 
   // Scan state
   const [scanning, setScanning] = useState(false);
-  const [ocrText, setOcrText] = useState("");
   const [detectedLanguage, setDetectedLanguage] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [scanError, setScanError] = useState(null);
+  const [ocrText, setOcrText] = useState("");
 
   // Camera state
   const videoRef = useRef(null);
@@ -125,50 +185,6 @@ export default function Scanner() {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
-
-  // --- Load Pokédex data ---
-  useEffect(() => {
-    async function loadPokedex() {
-      try {
-        setLoadingDex(true);
-        setDexError(null);
-
-        const res = await fetch(
-          `https://pokeapi.co/api/v2/pokemon?limit=${MAX_POKEMON}&offset=0`
-        );
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
-
-        const nameMap = {};
-        const dexMap = {};
-
-        data.results.forEach((pokemon, index) => {
-          const idFromUrl = pokemon.url.split("/").filter(Boolean).pop();
-          const id = Number(idFromUrl) || index + 1;
-
-          if (id >= 1 && id <= MAX_POKEMON) {
-            const name = pokemon.name.toLowerCase();
-            nameMap[name] = id;
-            dexMap[id] = pokemon.name;
-          }
-        });
-
-        setNameToDex(nameMap);
-        setDexToName(dexMap);
-      } catch (err) {
-        console.error("Failed to load Pokédex data for Scanner:", err);
-        setDexError("Couldn’t load Pokémon names from PokéAPI.");
-      } finally {
-        setLoadingDex(false);
-      }
-    }
-
-    loadPokedex();
-  }, []);
 
   // --- Subscribe to user's collection ---
   useEffect(() => {
@@ -286,15 +302,80 @@ export default function Scanner() {
     setImagePreviewUrl(url);
   };
 
-  // --- Core scan logic (shared by file & camera) ---
-  const runScanOnImage = async (imageUrl) => {
-    if (!imageUrl) {
-      setScanError("No image to scan.");
-      return;
+  // --- OCR helpers ---
+
+  async function ocrOnce(imageUrl, langs) {
+    const result = await Tesseract.recognize(imageUrl, langs, {
+      logger: () => {
+        // you can track progress here if desired
+      },
+    });
+    return result?.data?.text || "";
+  }
+
+  // Phase 1: run OCR 3 times, vote on language
+  async function detectLanguageWithVoting(imageUrl) {
+    const langVotes = [];
+
+    for (let i = 0; i < 3; i++) {
+      const text = await ocrOnce(imageUrl, OCR_LANGS_MULTI);
+      const langCode = detectLanguageFromText(text);
+      langVotes.push(langCode);
     }
 
-    if (loadingDex || Object.keys(nameToDex).length === 0) {
-      setScanError("Pokédex data isn’t ready yet. Please wait a moment.");
+    const votedLang = majorityVote(langVotes) || "en";
+    return votedLang;
+  }
+
+  // Phase 2: run OCR 3 times with chosen language, vote on Pokémon name
+  async function detectPokemonWithLang(imageUrl, langCode) {
+    const tesseractLang = LANG_CODE_TO_TESSERACT[langCode] || "eng";
+    const nameMap = getNameMapForLang(langCode);
+
+    const matches = [];
+    let lastText = "";
+
+    for (let i = 0; i < 3; i++) {
+      const text = await ocrOnce(imageUrl, tesseractLang);
+      lastText = text || lastText;
+
+      const match = findBestPokemonMatch(text, nameMap);
+      if (match) {
+        matches.push(match);
+      }
+    }
+
+    if (matches.length === 0) {
+      return { match: null, lastText };
+    }
+
+    // Majority vote by dexNumber
+    const dexCounts = {};
+    let bestDex = null;
+    let bestCount = 0;
+
+    matches.forEach((m) => {
+      dexCounts[m.dexNumber] = (dexCounts[m.dexNumber] || 0) + 1;
+      if (dexCounts[m.dexNumber] > bestCount) {
+        bestCount = dexCounts[m.dexNumber];
+        bestDex = m.dexNumber;
+      }
+    });
+
+    if (!bestDex) {
+      return { match: null, lastText };
+    }
+
+    // Pick any match with that dexNumber as representative
+    const chosen = matches.find((m) => m.dexNumber === bestDex);
+
+    return { match: chosen || null, lastText };
+  }
+
+  // --- Full scan pipeline: language vote + name vote + optional Firestore write ---
+  async function runFullScan(imageUrl) {
+    if (!imageUrl) {
+      setScanError("No image to scan.");
       return;
     }
 
@@ -305,65 +386,59 @@ export default function Scanner() {
     setDetectedLanguage(null);
 
     try {
-      const result = await Tesseract.recognize(imageUrl, OCR_LANGS, {
-        logger: () => {
-          // optional progress
-        },
-      });
+      // 1) Language detection (3 runs)
+      const langCode = await detectLanguageWithVoting(imageUrl);
+      setDetectedLanguage(langCode);
 
-      const rawText = result?.data?.text || "";
-      const normalized = normalizeText(rawText);
+      const langLabel = prettyLanguage(langCode);
 
-      setOcrText(rawText);
-      setDetectedLanguage(detectLanguageFromText(rawText));
+      // 2) Name detection with chosen language (3 runs)
+      const { match, lastText } = await detectPokemonWithLang(
+        imageUrl,
+        langCode
+      );
 
-      if (!normalized) {
-        setScanError(
-          "No readable text found on this image. Try moving closer or improving lighting."
-        );
-        return;
-      }
-
-      const match = findBestPokemonMatch(normalized, nameToDex);
+      setOcrText(lastText || "");
 
       if (!match) {
-        setStatusMessage("");
-        setScanError(
-          "I couldn’t confidently detect a Pokémon name on this card. Try adjusting the card or lighting and scan again."
+        setStatusMessage(
+          `Detected card language as ${langLabel}, but couldn’t confidently read a Pokémon name from the top band.`
         );
         return;
       }
 
       const { name, dexNumber } = match;
+      const formattedName =
+        name.charAt(0).toUpperCase() + name.slice(1);
 
       if (!user) {
         setStatusMessage(
-          `Detected ${formatName(
-            name
-          )} (#${dexNumber}), but you’re not signed in. Sign in to save it to your collection.`
+          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card, but you’re not signed in. Sign in to save it to your collection.`
+        );
+        return;
+      }
+
+      const alreadyOwned = !!ownedDex[dexNumber];
+
+      await setDoc(
+        doc(db, "users", user.uid, "collection", String(dexNumber)),
+        {
+          dexNumber,
+          name: formattedName,
+          language: langCode,
+          addedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      if (alreadyOwned) {
+        setStatusMessage(
+          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card. It’s already in your collection.`
         );
       } else {
-        const alreadyOwned = !!ownedDex[dexNumber];
-
-        await setDoc(
-          doc(db, "users", user.uid, "collection", String(dexNumber)),
-          {
-            dexNumber,
-            name: formatName(name),
-            addedAt: serverTimestamp(),
-          },
-          { merge: true }
+        setStatusMessage(
+          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card and added it to your collection!`
         );
-
-        if (alreadyOwned) {
-          setStatusMessage(
-            `Detected ${formatName(name)} (#${dexNumber}). It’s already in your collection.`
-          );
-        } else {
-          setStatusMessage(
-            `Added ${formatName(name)} (#${dexNumber}) to your collection!`
-          );
-        }
       }
     } catch (err) {
       console.error("Failed to scan card:", err);
@@ -371,7 +446,7 @@ export default function Scanner() {
     } finally {
       setScanning(false);
     }
-  };
+  }
 
   // --- File-based scan trigger ---
   const handleScanClick = async () => {
@@ -381,11 +456,11 @@ export default function Scanner() {
     }
 
     if (imagePreviewUrl) {
-      await runScanOnImage(imagePreviewUrl);
+      await runFullScan(imagePreviewUrl);
     } else if (imageFile) {
       const url = URL.createObjectURL(imageFile);
       setImagePreviewUrl(url);
-      await runScanOnImage(url);
+      await runFullScan(url);
     }
   };
 
@@ -479,52 +554,17 @@ export default function Scanner() {
     setOcrText("");
     setDetectedLanguage(null);
 
-    await runScanOnImage(dataUrl);
+    await runFullScan(dataUrl);
   };
-
-  // --- Match helper ---
-  function findBestPokemonMatch(normalizedText, nameToDexMap) {
-    let bestName = null;
-    let bestDex = null;
-    let bestScore = 0;
-
-    const text = ` ${normalizedText} `;
-
-    for (const [name, dex] of Object.entries(nameToDexMap)) {
-      if (dex < 1 || dex > MAX_POKEMON) continue;
-
-      let score = 0;
-
-      if (textContainsName(text, name)) {
-        score = 3;
-      } else if (text.includes(name)) {
-        score = 2;
-      } else {
-        const nameCore = name.replace(/[^a-z0-9]/g, "");
-        if (nameCore.length >= 4 && approxContains(text, nameCore)) {
-          score = 1;
-        }
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestName = name;
-        bestDex = dex;
-      }
-    }
-
-    if (!bestName || bestScore === 0) return null;
-    return { name: bestName, dexNumber: bestDex, score: bestScore };
-  }
 
   return (
     <div className="scanner">
       <header className="scanner-header">
         <h1 className="scanner-title">Scan Cards</h1>
         <p className="scanner-subtitle">
-          Use your camera or upload a photo of a Pokémon card. Line the card up
-          inside the frame and I’ll try to detect the Pokémon and add it to
-          your collection.
+          Use your camera or upload a photo of a Pokémon card. I’ll detect the card’s
+          language, read the name band a few times, and try to add the correct
+          Pokémon to your collection.
         </p>
       </header>
 
@@ -544,7 +584,7 @@ export default function Scanner() {
               type="button"
               className="scanner-scan-btn scanner-scan-btn--camera"
               onClick={handleCaptureAndScan}
-              disabled={scanning || loadingDex || !cameraReady}
+              disabled={scanning || !cameraReady}
             >
               {scanning ? "Scanning…" : "Capture & Scan"}
             </button>
@@ -579,7 +619,7 @@ export default function Scanner() {
                 <div className="scanner-frame" ref={frameRef}>
                   <div className="scanner-frame-border" />
                   <div className="scanner-frame-label">
-                    Align your card inside the frame
+                    Align the card inside the frame
                   </div>
                 </div>
               </>
@@ -618,18 +658,11 @@ export default function Scanner() {
           type="button"
           className="scanner-scan-btn"
           onClick={handleScanClick}
-          disabled={(!imageFile && !imagePreviewUrl) || scanning || loadingDex}
+          disabled={(!imageFile && !imagePreviewUrl) || scanning}
         >
           {scanning ? "Scanning…" : "Scan Selected Image"}
         </button>
 
-        {loadingDex && (
-          <div className="scanner-hint">
-            Loading Pokédex data from PokéAPI…
-          </div>
-        )}
-
-        {dexError && <div className="scanner-error">{dexError}</div>}
         {scanError && <div className="scanner-error">{scanError}</div>}
         {statusMessage && (
           <div className="scanner-status">{statusMessage}</div>
@@ -637,14 +670,17 @@ export default function Scanner() {
 
         {detectedLanguage && (
           <div className="scanner-language">
-            Detected language: <strong>{detectedLanguage}</strong>
+            Detected language:{" "}
+            <strong>
+              {prettyLanguage(detectedLanguage)} ({detectedLanguage})
+            </strong>
           </div>
         )}
       </section>
 
       {ocrText && (
         <section className="scanner-ocr-debug">
-          <h2>Recognized Text (debug)</h2>
+          <h2>Recognized Text (last name-pass)</h2>
           <pre>{ocrText}</pre>
         </section>
       )}
