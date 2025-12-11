@@ -3,6 +3,9 @@ import React, { useEffect, useState, useRef } from "react";
 import Tesseract from "tesseract.js";
 import "./Scanner.css";
 
+import { ReactComponent as Loading } from "../../assets/icons/loading.svg";
+import { ReactComponent as Camera } from "../../assets/icons/camera.svg";
+
 import { useAuth } from "../../src/AuthContext";
 import { db } from "../../src/firebase";
 import {
@@ -100,17 +103,17 @@ function detectLanguageFromText(text) {
   for (const ch of text) {
     const code = ch.codePointAt(0);
 
-    if (code >= 0x3040 && code <= 0x309F) {
+    if (code >= 0x3040 && code <= 0x309f) {
       // Hiragana
       hasHiraganaOrKatakana = true;
       continue;
     }
-    if (code >= 0x30A0 && code <= 0x30FF) {
+    if (code >= 0x30a0 && code <= 0x30ff) {
       // Katakana
       hasHiraganaOrKatakana = true;
       continue;
     }
-    if (code >= 0xAC00 && code <= 0xD7AF) {
+    if (code >= 0xac00 && code <= 0xd7af) {
       // Hangul
       hasHangul = true;
       continue;
@@ -151,6 +154,17 @@ function getNameMapForLang(langCode) {
   return pokemonNames.en || {};
 }
 
+// NEW: get English name for a dex number
+function getEnglishNameForDex(dexNumber) {
+  const enMap = pokemonNames.en || {};
+  for (const [name, dex] of Object.entries(enMap)) {
+    if (dex === dexNumber) {
+      return name.charAt(0).toUpperCase() + name.slice(1);
+    }
+  }
+  return null;
+}
+
 function normalizeForMatching(text, langCode) {
   if (!text) return "";
 
@@ -158,10 +172,7 @@ function normalizeForMatching(text, langCode) {
     return text.replace(/\s+/g, "");
   }
 
-  return text
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function levenshtein(a, b) {
@@ -278,7 +289,7 @@ export default function Scanner() {
   const [scanError, setScanError] = useState(null);
   const [ocrText, setOcrText] = useState("");
 
-  // NEW: confirmation & placement state
+  // confirmation & placement state
   const [pendingMatch, setPendingMatch] = useState(null);
   // pendingMatch: { dexNumber, name, langCode, alreadyOwned }
   const [placementInfo, setPlacementInfo] = useState(null);
@@ -308,8 +319,7 @@ export default function Scanner() {
         const map = {};
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          const dex =
-            data.dexNumber ?? Number.parseInt(docSnap.id, 10) ?? null;
+          const dex = data.dexNumber ?? Number.parseInt(docSnap.id, 10) ?? null;
           if (dex && dex >= 1 && dex <= MAX_POKEMON) {
             map[dex] = true;
           }
@@ -516,7 +526,7 @@ export default function Scanner() {
 
       if (!allMatches.length) {
         setStatusMessage(
-          `Detected card language as ${langLabel}, but couldn’t confidently read a Pokémon name from the top band.`
+          `Detected card language as ${langLabel}, but couldn't confidently read a Pokémon name from the top band.`
         );
         return;
       }
@@ -535,7 +545,7 @@ export default function Scanner() {
 
       if (!bestDex) {
         setStatusMessage(
-          `Detected card language as ${langLabel}, but couldn’t confidently agree on which Pokémon it is.`
+          `Detected card language as ${langLabel}, but couldn't confidently agree on which Pokémon it is.`
         );
         return;
       }
@@ -560,7 +570,7 @@ export default function Scanner() {
           alreadyOwned: false,
         });
         setStatusMessage(
-          `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card. Sign in to add it to your collection.`
+          `Detected <span class="bold">${formattedName} (#${dexNumber})</span> on a ${langLabel} card. Sign in to add it to your collection.`
         );
         return;
       }
@@ -574,7 +584,7 @@ export default function Scanner() {
       });
 
       setStatusMessage(
-        `Detected ${formattedName} (#${dexNumber}) on a ${langLabel} card. Please confirm below.`
+        `Detected <span class="bold">${formattedName} (#${dexNumber})</span> on a ${langLabel} card. Please confirm below.`
       );
     } catch (err) {
       console.error("Failed to scan card:", err);
@@ -729,7 +739,7 @@ export default function Scanner() {
   const handleRejectMatch = () => {
     setPendingMatch(null);
     setPlacementInfo(null);
-    setStatusMessage("Okay, let’s try scanning again or adjust the card.");
+    setStatusMessage("Okay, let's try scanning again or adjust the card.");
   };
 
   const handleConfirmMatch = () => {
@@ -742,7 +752,7 @@ export default function Scanner() {
     }
     setPlacementInfo(slot);
     setStatusMessage(
-      `Great! Here’s where ${pendingMatch.name} goes in your binders.`
+      `Great! Here's where <span class="bold">${pendingMatch.name}</span> goes in your binders.`
     );
   };
 
@@ -771,8 +781,7 @@ export default function Scanner() {
         { merge: true }
       );
 
-      const slot =
-        placementInfo || findSlot(pendingMatch.dexNumber) || null;
+      const slot = placementInfo || findSlot(pendingMatch.dexNumber) || null;
 
       if (slot && !slot.error) {
         setStatusMessage(
@@ -794,13 +803,19 @@ export default function Scanner() {
     }
   };
 
+  // Compute English name for confirmation UI
+  const englishName =
+    pendingMatch && pendingMatch.dexNumber
+      ? getEnglishNameForDex(pendingMatch.dexNumber)
+      : null;
+
   return (
     <div className="scanner">
       <header className="scanner-header">
         <h1 className="scanner-title">Scan Cards</h1>
         <p className="scanner-subtitle">
-          Use your camera or upload a photo of a Pokémon card. I’ll detect the
-          card’s language, guess the Pokémon, let you confirm it, and then help
+          Use your camera or upload a photo of a Pokémon card. I'll detect the
+          card's language, guess the Pokémon, let you confirm it, and then help
           you place it in your binders.
         </p>
       </header>
@@ -815,17 +830,6 @@ export default function Scanner() {
           >
             {cameraActive ? "Stop Camera" : "Start Camera"}
           </button>
-
-          {cameraActive && (
-            <button
-              type="button"
-              className="scanner-scan-btn scanner-scan-btn--camera"
-              onClick={handleCaptureAndScan}
-              disabled={scanning || !cameraReady}
-            >
-              {scanning ? "Scanning…" : "Capture & Scan"}
-            </button>
-          )}
         </div>
 
         {cameraError && (
@@ -852,6 +856,15 @@ export default function Scanner() {
             {cameraReady && (
               <>
                 <div className="scanner-frame-mask" />
+                {/* Capture & Scan button moved INSIDE the frame */}
+                <button
+                  type="button"
+                  className="scanner-scan-btn scanner-scan-btn--camera"
+                  onClick={handleCaptureAndScan}
+                  disabled={scanning}
+                >
+                  {scanning ? <Loading /> : <Camera />}
+                </button>
                 <div className="scanner-frame" ref={frameRef}>
                   <div className="scanner-frame-border" />
                   <div className="scanner-frame-label">
@@ -867,55 +880,49 @@ export default function Scanner() {
       </section>
 
       {/* File upload section */}
-      <section className="scanner-controls">
+
+      {cameraReady && (
+        <section className="scanner-controls">
+          <h3>Captured image:</h3>
+          {/*
         <div className="scanner-file-row">
           <label className="scanner-file-label">
             <span>Select a card photo</span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-            />
+            <input type="file" accept="image/*" onChange={handleFileChange} />
           </label>
         </div>
+        */}
 
-        {imagePreviewUrl && (
-          <div className="scanner-preview">
-            <img
-              src={imagePreviewUrl}
-              alt="Selected card preview"
-              className="scanner-preview-image"
+          {imagePreviewUrl && (
+            <div className="scanner-preview">
+              <img
+                src={imagePreviewUrl}
+                alt="Selected card preview"
+                className="scanner-preview-image"
+              />
+            </div>
+          )}
+
+          {scanError && <div className="scanner-error">{scanError}</div>}
+          {statusMessage && (
+            <p
+              className="scanner-status"
+              dangerouslySetInnerHTML={{ __html: statusMessage }}
             />
-          </div>
-        )}
+          )}
 
-        <button
-          type="button"
-          className="scanner-scan-btn"
-          onClick={handleScanClick}
-          disabled={(!imageFile && !imagePreviewUrl) || scanning}
-        >
-          {scanning ? "Scanning…" : "Scan Selected Image"}
-        </button>
-
-        {scanError && <div className="scanner-error">{scanError}</div>}
-        {statusMessage && (
-          <div className="scanner-status">
-            {statusMessage.split("\n").map((line, i) => (
-              <p key={i}>{line}</p>
-            ))}
-          </div>
-        )}
-
-        {detectedLanguage && (
-          <div className="scanner-language">
-            Detected language:{" "}
-            <strong>
-              {prettyLanguage(detectedLanguage)} ({detectedLanguage})
-            </strong>
-          </div>
-        )}
-      </section>
+          {detectedLanguage && (
+            <div className="scanner-language">
+              <p>
+                Detected language:{" "}
+                <strong>
+                  {prettyLanguage(detectedLanguage)} ({detectedLanguage})
+                </strong>
+              </p>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Confirmation + placement UI */}
       {pendingMatch && (
@@ -924,11 +931,22 @@ export default function Scanner() {
           <div className="scanner-confirm-card">
             <div className="scanner-confirm-main">
               <div className="scanner-confirm-name">
-                {pendingMatch.name} <span>#{pendingMatch.dexNumber}</span>
+                <span className="bold">
+                  {pendingMatch.name} <span>#{pendingMatch.dexNumber}</span>
+                </span>
+                {englishName && (
+                  <>
+                    {" "}
+                    : {englishName} <span>#{pendingMatch.dexNumber}</span>
+                  </>
+                )}
               </div>
               <div className="scanner-confirm-lang">
-                Language: {prettyLanguage(pendingMatch.langCode)} (
-                {pendingMatch.langCode})
+                Language:
+                <span className="bold">
+                  {prettyLanguage(pendingMatch.langCode)} (
+                  {pendingMatch.langCode})
+                </span>
               </div>
               {pendingMatch.alreadyOwned && (
                 <div className="scanner-confirm-owned-note">
@@ -943,14 +961,14 @@ export default function Scanner() {
                 className="scanner-confirm-btn scanner-confirm-btn--yes"
                 onClick={handleConfirmMatch}
               >
-                Yes, that looks right
+                Yes
               </button>
               <button
                 type="button"
                 className="scanner-confirm-btn scanner-confirm-btn--no"
                 onClick={handleRejectMatch}
               >
-                No, that’s not right
+                No
               </button>
             </div>
           </div>
@@ -962,7 +980,9 @@ export default function Scanner() {
           <h2>Binder placement</h2>
           <div className="scanner-placement-details">
             <p>
-              <strong>{pendingMatch.name}</strong> (# {pendingMatch.dexNumber})
+              <strong>
+                {pendingMatch.name} (# {pendingMatch.dexNumber})
+              </strong>{" "}
               goes here:
             </p>
             <ul>

@@ -71,7 +71,7 @@ function lookupPokemon(inputValue, nameToDex) {
   if (!nameToDex || Object.keys(nameToDex).length === 0) {
     return {
       error:
-        "Pokémon name data isn’t loaded yet. Try using a Pokédex number instead.",
+        "Pokémon name data isn't loaded yet. Try using a Pokédex number instead.",
     };
   }
 
@@ -82,7 +82,7 @@ function lookupPokemon(inputValue, nameToDex) {
   if (!dexNumber) {
     return {
       error:
-        `I don’t recognize “${trimmed}”. ` +
+        `I don't recognize “${trimmed}”. ` +
         "Make sure the name is spelled correctly, or enter a Pokédex number.",
     };
   }
@@ -152,7 +152,7 @@ export function Calculator() {
       } catch (err) {
         console.error("Failed to load Pokédex data:", err);
         setDexError(
-          "Couldn’t load Pokémon names from PokéAPI. Number lookups will still work."
+          "Couldn't load Pokémon names from PokéAPI. Number lookups will still work."
         );
       } finally {
         setLoadingDex(false);
@@ -185,9 +185,9 @@ export function Calculator() {
 
       setSpriteUrl(url);
     } catch (err) {
-      console.error("Couldn’t load sprite:", err);
+      console.error("Couldn't load sprite:", err);
       setSpriteUrl(null);
-      setSpriteError("Couldn’t load sprite for this Pokémon.");
+      setSpriteError("Couldn't load sprite for this Pokémon.");
     } finally {
       setSpriteLoading(false);
     }
