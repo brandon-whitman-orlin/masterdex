@@ -919,6 +919,15 @@ export default function Scanner() {
                   {prettyLanguage(detectedLanguage)} ({detectedLanguage})
                 </strong>
               </p>
+
+              {/* Show detected Pokémon sprite if available */}
+              {pendingMatch && pendingMatch.dexNumber && (
+                <img
+                  className="scanner-language-sprite"
+                  src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pendingMatch.dexNumber}.png`}
+                  alt={`Pokémon #${pendingMatch.dexNumber} sprite`}
+                />
+              )}
             </div>
           )}
         </section>
