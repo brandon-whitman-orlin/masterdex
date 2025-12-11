@@ -23,9 +23,9 @@
 }
 
 .bold {
-    font-family: var(--heading-font);
-    font-weight: 600;
-    white-space: nowrap;
+  font-family: var(--heading-font);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .scanner-subtitle {
@@ -33,13 +33,13 @@
 }
 
 .scanner-status {
-    text-align: center;
+  text-align: center;
 }
 
 .scanner-language p {
-    text-align: center;
-    width: 100%;
-    display: block;
+  text-align: center;
+  width: 100%;
+  display: block;
 }
 
 .scanner-camera-controls {
@@ -127,8 +127,10 @@
   outline-offset: 4px; */
 }
 
-.scanner-camera:has(.scanner-video-wrapper) .scanner-video-wrapper .scanner-frame-label {
-    animation: fade 5s ease-in-out 1s 1 normal forwards;
+.scanner-camera:has(.scanner-video-wrapper)
+  .scanner-video-wrapper
+  .scanner-frame-label {
+  animation: fade 5s ease-in-out 1s 1 normal forwards;
 }
 
 .scanner-frame-label {
@@ -143,51 +145,72 @@
 }
 
 @keyframes fade {
-    0%, 75% {
-        opacity: 1;
-    }
+  0%,
+  75% {
+    opacity: 1;
+  }
 
-    100% {
-        opacity: 0;
-    }
+  100% {
+    opacity: 0;
+  }
 }
 
 .scanner-confirm-actions {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: var(--font-size-base);
-    margin-top: var(--font-size-sm);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--font-size-base);
+  margin-top: var(--font-size-sm);
 }
 
 .scanner-confirm-actions button {
-    padding: var(--font-size-sm) var(--font-size-base);
+  padding: var(--font-size-sm) var(--font-size-base);
 }
 
-
-.scanner-confirm-name, .scanner-confirm-lang {
-    text-align: center;
+.scanner-confirm-name,
+.scanner-confirm-lang {
+  text-align: center;
 }
 
 .scanner-confirm-card {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
 }
 
 .scanner-confirm-lang .bold {
-    margin-left: 0.5ch;
+  margin-left: 0.5ch;
 }
 
 .scanner-placement {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    flex-direction: column;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  flex-direction: column;
 }
 
 .scanner-ocr-debug {
-    display: none;
+  display: none;
+}
+
+.scanner-language {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.scanner-language-sprite {
+  background: white;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  aspect-ratio: 1;
+  min-width: 98px;
+  margin-top: var(--font-size-base);
 }
