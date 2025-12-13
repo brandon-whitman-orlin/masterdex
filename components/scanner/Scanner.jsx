@@ -1,6 +1,5 @@
 // src/components/scanner/Scanner.jsx
-import React, { useEffect, useState, useRef } from "react";
-import Tesseract from "tesseract.js";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import "./Scanner.css";
 
 import { ReactComponent as Loading } from "../../assets/icons/loading.svg";
@@ -24,20 +23,12 @@ const MAX_POKEMON = 1025;
 const SLOTS_PER_BINDER = 360; // 40 pages × 9 slots
 const SLOTS_PER_PAGE = 9;
 
-// Phase 1: language detection
-const OCR_LANGS_MULTI = "eng+jpn+kor+fra+deu";
+// Cloud Vision function URL (Gen 2 / Cloud Run URL from Firebase Console)
+const VISION_ENDPOINT = "https://detectcard-5z4ut44vea-uc.a.run.app";
 
-// Phase 2: per-language OCR
-const LANG_CODE_TO_TESSERACT = {
-  en: "eng",
-  ja: "jpn",
-  ko: "kor",
-  fr: "fra",
-  de: "deu",
-};
-
-const NAME_BAND_RATIO = 0.2; // top 20% of the card
-const FRAME_SAMPLES = 3; // number of distinct frames to capture from camera
+// Camera capture sampling (keep simple; you can bump later)
+const FRAME_SAMPLES = 1;
+const CAPTURE_DELAY_MS = 120;
 
 // --- Helper: slot math (binder/page/slot) ---
 function findSlot(pokedexNumber) {
@@ -70,93 +61,14 @@ function findSlot(pokedexNumber) {
   };
 }
 
-// --- OCR helpers + fuzzy matching ---
-
-function prettyLanguage(langCode) {
-  switch (langCode) {
-    case "ja":
-      return "Japanese";
-    case "ko":
-      return "Korean";
-    case "fr":
-      return "French";
-    case "de":
-      return "German";
-    case "en":
-      return "English";
-    default:
-      return "Unknown";
-  }
-}
-
-function detectLanguageFromText(text) {
-  if (!text) return "en";
-
-  let hasHiraganaOrKatakana = false;
-  let hasHangul = false;
-  let hasFrAccent = false;
-  let hasDeAccent = false;
-
-  const frChars = "éèàçêëïîôâùû";
-  const deChars = "äöüßÄÖÜ";
-
-  for (const ch of text) {
-    const code = ch.codePointAt(0);
-
-    if (code >= 0x3040 && code <= 0x309f) {
-      // Hiragana
-      hasHiraganaOrKatakana = true;
-      continue;
-    }
-    if (code >= 0x30a0 && code <= 0x30ff) {
-      // Katakana
-      hasHiraganaOrKatakana = true;
-      continue;
-    }
-    if (code >= 0xac00 && code <= 0xd7af) {
-      // Hangul
-      hasHangul = true;
-      continue;
-    }
-
-    if (frChars.includes(ch)) hasFrAccent = true;
-    if (deChars.includes(ch)) hasDeAccent = true;
-  }
-
-  if (hasHangul) return "ko";
-  if (hasHiraganaOrKatakana) return "ja";
-  if (hasFrAccent) return "fr";
-  if (hasDeAccent) return "de";
-
-  return "en";
-}
-
-function majorityVote(values) {
-  const counts = {};
-  let bestValue = null;
-  let bestCount = 0;
-
-  values.forEach((v) => {
-    if (!v) return;
-    counts[v] = (counts[v] || 0) + 1;
-    if (counts[v] > bestCount) {
-      bestCount = counts[v];
-      bestValue = v;
-    }
-  });
-
-  return bestValue;
-}
-
-function getNameMapForLang(langCode) {
-  const map = pokemonNames[langCode];
-  if (map && Object.keys(map).length > 0) return map;
-  return pokemonNames.en || {};
+// --- Pokemon name helpers (English) ---
+function getEnglishNameMap() {
+  return pokemonNames?.en || {};
 }
 
 // NEW: get English name for a dex number
 function getEnglishNameForDex(dexNumber) {
-  const enMap = pokemonNames.en || {};
+  const enMap = getEnglishNameMap();
   for (const [name, dex] of Object.entries(enMap)) {
     if (dex === dexNumber) {
       return name.charAt(0).toUpperCase() + name.slice(1);
@@ -165,118 +77,153 @@ function getEnglishNameForDex(dexNumber) {
   return null;
 }
 
-function normalizeForMatching(text, langCode) {
-  if (!text) return "";
-
-  if (langCode === "ja" || langCode === "ko") {
-    return text.replace(/\s+/g, "");
+// --- Cloud Vision helpers ---
+function stripDiacritics(s) {
+  try {
+    return s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  } catch {
+    return s;
   }
-
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function levenshtein(a, b) {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
+function normalizeEntityText(s) {
+  if (!s) return "";
+  // keep letters/numbers/spaces/hyphen/apostrophe
+  const clean = stripDiacritics(String(s))
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s\-']/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean;
+}
 
-  const dp = Array.from({ length: a.length + 1 }, () =>
-    new Array(b.length + 1).fill(0)
+// Try extracting a Pokémon name from longer product strings
+function extractCandidateNames(description) {
+  const raw = String(description || "");
+  const parts = [];
+
+  // Common patterns: "... : Caterpie", "... - Caterpie", "... (Caterpie)", etc.
+  const afterColon = raw.split(":").pop();
+  if (afterColon && afterColon !== raw) parts.push(afterColon);
+
+  const afterDash = raw.split(" - ").pop();
+  if (afterDash && afterDash !== raw) parts.push(afterDash);
+
+  // Parentheses
+  const parenMatches = raw.match(/\(([^)]+)\)/g);
+  if (parenMatches) {
+    parenMatches.forEach((m) => {
+      const inner = m.replace(/[()]/g, "");
+      parts.push(inner);
+    });
+  }
+
+  // Also include the whole thing as a fallback
+  parts.push(raw);
+
+  // From each part, take first 1-3 tokens as candidates (to avoid set names, etc.)
+  const candidates = new Set();
+  parts.forEach((p) => {
+    const norm = normalizeEntityText(p);
+    if (!norm) return;
+
+    const tokens = norm.split(" ").filter(Boolean);
+    if (tokens.length === 0) return;
+
+    // "mr mime" edge cases: allow up to 3 tokens
+    for (let n = 1; n <= Math.min(3, tokens.length); n++) {
+      candidates.add(tokens.slice(0, n).join(" "));
+    }
+
+    // also allow last token (often just the name)
+    candidates.add(tokens[tokens.length - 1]);
+  });
+
+  return Array.from(candidates).filter(Boolean);
+}
+
+function buildEnglishNameLookup() {
+  const enMap = getEnglishNameMap(); // { name -> dex }
+  const lookup = new Map(); // normalizedName -> { name, dexNumber }
+
+  Object.entries(enMap).forEach(([name, dex]) => {
+    if (!dex || dex < 1 || dex > MAX_POKEMON) return;
+    const key = normalizeEntityText(name);
+    if (!key) return;
+    lookup.set(key, { name, dexNumber: dex });
+  });
+
+  return lookup;
+}
+
+function pickBestPokemonFromVision(webEntities, englishLookup) {
+  if (!Array.isArray(webEntities) || webEntities.length === 0) return null;
+
+  // Highest score first
+  const sorted = [...webEntities].sort(
+    (a, b) => (b.score || 0) - (a.score || 0)
   );
 
-  for (let i = 0; i <= a.length; i++) dp[i][0] = i;
-  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (const e of sorted) {
+    const desc = e?.description;
+    if (!desc) continue;
 
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
-      );
-    }
-  }
+    const candidates = extractCandidateNames(desc);
+    for (const c of candidates) {
+      const hit = englishLookup.get(normalizeEntityText(c));
+      if (hit) {
+        const formattedName =
+          hit.name.charAt(0).toUpperCase() + hit.name.slice(1);
 
-  return dp[a.length][b.length];
-}
-
-function bestSubstringDistance(textNorm, candidateNorm) {
-  if (!textNorm || !candidateNorm) return Infinity;
-
-  const tLen = textNorm.length;
-  const cLen = candidateNorm.length;
-
-  if (cLen === 0) return Infinity;
-  if (tLen === 0) return Infinity;
-
-  if (cLen >= tLen) {
-    return levenshtein(candidateNorm, textNorm);
-  }
-
-  let minDist = Infinity;
-  for (let i = 0; i <= tLen - cLen; i++) {
-    const sub = textNorm.slice(i, i + cLen);
-    const d = levenshtein(candidateNorm, sub);
-    if (d < minDist) {
-      minDist = d;
-      if (minDist === 0) break;
-    }
-  }
-
-  return minDist;
-}
-
-function findBestPokemonMatch(rawText, nameMap, langCode) {
-  if (!rawText || !nameMap) return null;
-
-  const textNorm = normalizeForMatching(rawText, langCode);
-
-  let bestName = null;
-  let bestDex = null;
-  let bestScore = 0;
-
-  for (const [name, dex] of Object.entries(nameMap)) {
-    if (!dex || dex < 1 || dex > MAX_POKEMON) continue;
-
-    const candidateNorm = normalizeForMatching(name, langCode);
-    if (!candidateNorm) continue;
-
-    // Exact substring match
-    if (textNorm.includes(candidateNorm)) {
-      const score = candidateNorm.length + 100;
-      if (score > bestScore) {
-        bestScore = score;
-        bestName = name;
-        bestDex = dex;
-      }
-      continue;
-    }
-
-    const dist = bestSubstringDistance(textNorm, candidateNorm);
-    if (!Number.isFinite(dist)) continue;
-
-    const maxAllowed =
-      candidateNorm.length <= 3 ? 1 : candidateNorm.length <= 6 ? 2 : 2;
-
-    if (dist <= maxAllowed) {
-      const score = candidateNorm.length - dist * 1.5;
-      if (score > bestScore) {
-        bestScore = score;
-        bestName = name;
-        bestDex = dex;
+        return {
+          name: formattedName,
+          dexNumber: hit.dexNumber,
+          score: typeof e.score === "number" ? e.score : null,
+          rawDescription: desc,
+        };
       }
     }
   }
 
-  if (!bestName) return null;
-  return { name: bestName, dexNumber: bestDex, score: bestScore };
+  return null;
+}
+
+async function callVisionEndpoint(imageDataUrl, user) {
+  if (!user) throw new Error("Not signed in.");
+
+  const token = await user.getIdToken();
+
+  const res = await fetch(VISION_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ imageBase64: imageDataUrl }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const msg =
+      json?.error ||
+      json?.message ||
+      `Vision request failed with HTTP ${res.status}`;
+    throw new Error(
+      typeof json === "object"
+        ? `${msg}\n${JSON.stringify(json, null, 2)}`
+        : msg
+    );
+  }
+
+  return json;
 }
 
 // --- Component ---
-
 export default function Scanner() {
   const { user } = useAuth();
+
+  const englishLookup = useMemo(() => buildEnglishNameLookup(), []);
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
@@ -284,14 +231,14 @@ export default function Scanner() {
   const [ownedDex, setOwnedDex] = useState({});
 
   const [scanning, setScanning] = useState(false);
-  const [detectedLanguage, setDetectedLanguage] = useState(null);
+  const [detectedLanguage, setDetectedLanguage] = useState(null); // kept for CSS structure; now "vision"
   const [statusMessage, setStatusMessage] = useState("");
   const [scanError, setScanError] = useState(null);
-  const [ocrText, setOcrText] = useState("");
+  const [ocrText, setOcrText] = useState(""); // kept for CSS/debug structure; now holds raw vision debug if you want
 
   // confirmation & placement state
   const [pendingMatch, setPendingMatch] = useState(null);
-  // pendingMatch: { dexNumber, name, langCode, alreadyOwned }
+  // pendingMatch: { dexNumber, name, langCode, alreadyOwned, score, rawDescription }
   const [placementInfo, setPlacementInfo] = useState(null);
   const [savingMatch, setSavingMatch] = useState(false);
 
@@ -402,193 +349,88 @@ export default function Scanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- File selection ---
-  const handleFileChange = (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    setImageFile(file);
+  const resetScanUI = () => {
     setScanError(null);
     setStatusMessage("");
     setOcrText("");
     setDetectedLanguage(null);
     setPendingMatch(null);
     setPlacementInfo(null);
+  };
+
+  // --- File selection ---
+  const handleFileChange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    setImageFile(file);
+    resetScanUI();
 
     const url = URL.createObjectURL(file);
     setImagePreviewUrl(url);
+
+    // allow same file again
+    e.target.value = "";
   };
 
-  // --- OCR wrappers ---
-
-  async function ocrOnce(imageUrl, langs) {
-    const result = await Tesseract.recognize(imageUrl, langs, {
-      logger: () => {},
-    });
-    return result?.data?.text || "";
-  }
-
-  async function detectLanguageWithVoting(imageUrl) {
-    const langVotes = [];
-
-    for (let i = 0; i < 3; i++) {
-      const text = await ocrOnce(imageUrl, OCR_LANGS_MULTI);
-      const langCode = detectLanguageFromText(text);
-      langVotes.push(langCode);
-    }
-
-    const votedLang = majorityVote(langVotes) || "en";
-    return votedLang;
-  }
-
-  async function detectPokemonWithLang(imageUrl, langCode) {
-    const tesseractLang = LANG_CODE_TO_TESSERACT[langCode] || "eng";
-    const nameMap = getNameMapForLang(langCode);
-
-    const matches = [];
-    let lastText = "";
-
-    for (let i = 0; i < 3; i++) {
-      const text = await ocrOnce(imageUrl, tesseractLang);
-      lastText = text || lastText;
-
-      const match = findBestPokemonMatch(text, nameMap, langCode);
-      if (match) matches.push(match);
-    }
-
-    if (matches.length === 0) {
-      return { match: null, lastText };
-    }
-
-    // Majority vote within one image
-    const dexCounts = {};
-    let bestDex = null;
-    let bestCount = 0;
-
-    matches.forEach((m) => {
-      dexCounts[m.dexNumber] = (dexCounts[m.dexNumber] || 0) + 1;
-      if (dexCounts[m.dexNumber] > bestCount) {
-        bestCount = dexCounts[m.dexNumber];
-        bestDex = m.dexNumber;
-      }
-    });
-
-    if (!bestDex) {
-      return { match: null, lastText };
-    }
-
-    const chosen = matches.find((m) => m.dexNumber === bestDex);
-    return { match: chosen || null, lastText };
-  }
-
-  // --- Full scan pipeline (now sets pendingMatch instead of writing immediately) ---
+  // --- Full scan pipeline (Vision) ---
   async function runFullScan(imageInput) {
     const imageUrls = Array.isArray(imageInput) ? imageInput : [imageInput];
-
     if (!imageUrls.length) {
       setScanError("No image to scan.");
       return;
     }
 
     setScanning(true);
-    setScanError(null);
-    setStatusMessage("");
-    setOcrText("");
-    setDetectedLanguage(null);
-    setPendingMatch(null);
-    setPlacementInfo(null);
+    resetScanUI();
 
     try {
-      // 1) Language detection across frames
-      const frameLangs = [];
-      for (const url of imageUrls) {
-        const langForFrame = await detectLanguageWithVoting(url);
-        frameLangs.push(langForFrame);
-      }
-      const langCode = majorityVote(frameLangs) || "en";
-      setDetectedLanguage(langCode);
-      const langLabel = prettyLanguage(langCode);
-
-      // 2) Name detection across frames
-      const allMatches = [];
-      let lastText = "";
-
-      for (const url of imageUrls) {
-        const { match, lastText: t } = await detectPokemonWithLang(
-          url,
-          langCode
-        );
-        if (t) lastText = t;
-        if (match) allMatches.push(match);
+      // If not signed in, we can still show the preview but we can't call the function
+      if (!user) {
+        setScanError("Sign in to scan cards with Cloud Vision.");
+        return;
       }
 
-      setOcrText(lastText || "");
+      // For now: just use the first frame (you can vote across multiple later)
+      const imageUrl = imageUrls[0];
 
-      if (!allMatches.length) {
+      setDetectedLanguage("vision"); // reusing this block to show the “source”
+
+      const visionJson = await callVisionEndpoint(imageUrl, user);
+      const webEntities = visionJson?.webEntities || [];
+
+      // (Optional) keep debug text in this old field to preserve debug section CSS
+      setOcrText(JSON.stringify({ webEntities }, null, 2));
+
+      const match = pickBestPokemonFromVision(webEntities, englishLookup);
+
+      if (!match) {
         setStatusMessage(
-          `Detected card language as ${langLabel}, but couldn't confidently read a Pokémon name from the top band.`
+          `I couldn't confidently identify a Pokémon from this image. Try a clearer photo (less glare / more centered).`
         );
         return;
       }
 
-      const dexCounts = {};
-      let bestDex = null;
-      let bestCount = 0;
-
-      allMatches.forEach((m) => {
-        dexCounts[m.dexNumber] = (dexCounts[m.dexNumber] || 0) + 1;
-        if (dexCounts[m.dexNumber] > bestCount) {
-          bestCount = dexCounts[m.dexNumber];
-          bestDex = m.dexNumber;
-        }
-      });
-
-      if (!bestDex) {
-        setStatusMessage(
-          `Detected card language as ${langLabel}, but couldn't confidently agree on which Pokémon it is.`
-        );
-        return;
-      }
-
-      const chosen =
-        allMatches.find((m) => m.dexNumber === bestDex) || allMatches[0];
-
-      const { name, dexNumber } = chosen;
-      const formattedName =
-        typeof name === "string"
-          ? name.charAt(0).toUpperCase() + name.slice(1)
-          : String(name);
-
+      const { name, dexNumber, score, rawDescription } = match;
       const alreadyOwned = !!ownedDex[dexNumber];
 
-      // If user not signed in, we still show the guess but can't add
-      if (!user) {
-        setPendingMatch({
-          dexNumber,
-          name: formattedName,
-          langCode,
-          alreadyOwned: false,
-        });
-        setStatusMessage(
-          `Detected <span class="bold">${formattedName} (#${dexNumber})</span> on a ${langLabel} card. Sign in to add it to your collection.`
-        );
-        return;
-      }
+      // Status message (bold span)
+      setStatusMessage(
+        `Detected <span class="bold">${name} (#${dexNumber})</span> via CardVision<br/>Please confirm below:`
+      );
 
-      // User is signed in → ask them to confirm, then optionally add
       setPendingMatch({
         dexNumber,
-        name: formattedName,
-        langCode,
+        name,
+        langCode: "vision",
         alreadyOwned,
+        score: typeof score === "number" ? score : null,
+        rawDescription: rawDescription || null,
       });
-
-      setStatusMessage(
-        `Detected <span class="bold">${formattedName} (#${dexNumber})</span> on a ${langLabel} card. Please confirm below.`
-      );
     } catch (err) {
-      console.error("Failed to scan card:", err);
+      console.error("Failed to scan card (CloudVision):", err);
       setScanError("Something went wrong while scanning this card.");
+      setStatusMessage(err?.message ? String(err.message) : "");
     } finally {
       setScanning(false);
     }
@@ -603,14 +445,18 @@ export default function Scanner() {
 
     if (imagePreviewUrl) {
       await runFullScan(imagePreviewUrl);
-    } else if (imageFile) {
+      return;
+    }
+
+    // fallback
+    if (imageFile) {
       const url = URL.createObjectURL(imageFile);
       setImagePreviewUrl(url);
       await runFullScan(url);
     }
   };
 
-  // --- Camera-based capture + scan (multi-frame) ---
+  // --- Camera-based capture + scan ---
   const handleCaptureAndScan = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -620,14 +466,12 @@ export default function Scanner() {
       setCameraError("Camera is not active.");
       return;
     }
-
     if (!cameraReady) {
       setCameraError(
         "Camera is still initializing. Wait a moment and try again."
       );
       return;
     }
-
     if (!video || !canvas || !frame) {
       setCameraError("Camera elements are not ready.");
       return;
@@ -643,35 +487,33 @@ export default function Scanner() {
       return;
     }
 
-    const videoRect = video.getBoundingClientRect();
-    const frameRect = frame.getBoundingClientRect();
-
-    const scaleX = videoWidth / videoRect.width;
-    const scaleY = videoHeight / videoRect.height;
-
-    const frameSx = (frameRect.left - videoRect.left) * scaleX;
-    const frameSy = (frameRect.top - videoRect.top) * scaleY;
-    const frameWidth = frameRect.width * scaleX;
-    const frameHeight = frameRect.height * scaleY;
-
-    const sx = frameSx;
-    const sy = frameSy;
-    const sWidth = frameWidth;
-    const sHeight = frameHeight * NAME_BAND_RATIO;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       setCameraError("Could not get canvas context.");
       return;
     }
 
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+
+    const scaleX = videoWidth / videoRect.width;
+    const scaleY = videoHeight / videoRect.height;
+
+    // Crop to the visible frame area (still useful), but we DO NOT crop the “top band” anymore.
+    const sx = (frameRect.left - videoRect.left) * scaleX;
+    const sy = (frameRect.top - videoRect.top) * scaleY;
+    const sWidth = frameRect.width * scaleX;
+    const sHeight = frameRect.height * scaleY;
+
     const imageUrls = [];
 
     for (let i = 0; i < FRAME_SAMPLES; i++) {
-      const targetWidth = 800;
+      // Downscale to keep payload reasonable but still readable
+      const targetWidth = 1100;
       const scale = sWidth > targetWidth ? targetWidth / sWidth : 1;
-      const canvasWidth = sWidth * scale;
-      const canvasHeight = sHeight * scale;
+
+      const canvasWidth = Math.max(1, Math.round(sWidth * scale));
+      const canvasHeight = Math.max(1, Math.round(sHeight * scale));
 
       canvas.width = canvasWidth;
       canvas.height = canvasHeight;
@@ -688,34 +530,12 @@ export default function Scanner() {
         canvasHeight
       );
 
-      try {
-        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-        const data = imageData.data;
-
-        for (let j = 0; j < data.length; j += 4) {
-          const r = data[j];
-          const g = data[j + 1];
-          const b = data[j + 2];
-
-          const v = 0.299 * r + 0.587 * g + 0.114 * b;
-          const val = v > 115 ? 255 : 0; // your tuned threshold
-
-          data[j] = val;
-          data[j + 1] = val;
-          data[j + 2] = val;
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-      } catch (err) {
-        console.warn("Could not preprocess image (threshold):", err);
-      }
-
-      const dataUrl = canvas.toDataURL("image/png");
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
       imageUrls.push(dataUrl);
 
       if (i < FRAME_SAMPLES - 1) {
         // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 120));
+        await new Promise((resolve) => setTimeout(resolve, CAPTURE_DELAY_MS));
       }
     }
 
@@ -724,32 +544,30 @@ export default function Scanner() {
     }
 
     setImageFile(null);
-    setScanError(null);
-    setStatusMessage("");
-    setOcrText("");
-    setDetectedLanguage(null);
-    setPendingMatch(null);
-    setPlacementInfo(null);
+    resetScanUI();
 
     await runFullScan(imageUrls);
   };
 
   // --- Confirmation flow ---
-
   const handleRejectMatch = () => {
     setPendingMatch(null);
     setPlacementInfo(null);
-    setStatusMessage("Okay, let's try scanning again or adjust the card.");
+    setStatusMessage(
+      "Darn - try scanning again or adjust the card in the frame."
+    );
   };
 
   const handleConfirmMatch = () => {
     if (!pendingMatch) return;
+
     const slot = findSlot(pendingMatch.dexNumber);
     if (slot.error) {
       setPlacementInfo(null);
       setStatusMessage(slot.error);
       return;
     }
+
     setPlacementInfo(slot);
     setStatusMessage(
       `Great! Here's where <span class="bold">${pendingMatch.name}</span> goes in your binders.`
@@ -775,7 +593,8 @@ export default function Scanner() {
         {
           dexNumber: pendingMatch.dexNumber,
           name: pendingMatch.name,
-          language: pendingMatch.langCode,
+          source: "cloud-vision",
+          visionScore: pendingMatch.score ?? null,
           addedAt: serverTimestamp(),
         },
         { merge: true }
@@ -803,7 +622,7 @@ export default function Scanner() {
     }
   };
 
-  // Compute English name for confirmation UI
+  // English name (Vision returns English already, but keep structure)
   const englishName =
     pendingMatch && pendingMatch.dexNumber
       ? getEnglishNameForDex(pendingMatch.dexNumber)
@@ -814,9 +633,9 @@ export default function Scanner() {
       <header className="scanner-header">
         <h1 className="scanner-title">Scan Cards</h1>
         <p className="scanner-subtitle">
-          Use your camera or upload a photo of a Pokémon card. I'll detect the
-          card's language, guess the Pokémon, let you confirm it, and then help
-          you place it in your binders.
+          Use your camera or upload a photo of a Pokémon card. CardVision will
+          guess the Pokémon, you confirm it, then we’ll show binder placement
+          and let you add it.
         </p>
       </header>
 
@@ -847,6 +666,7 @@ export default function Scanner() {
               playsInline
               muted
             />
+
             {!cameraReady && (
               <div className="scanner-video-overlay scanner-video-overlay--loading">
                 Initializing camera…
@@ -856,20 +676,23 @@ export default function Scanner() {
             {cameraReady && (
               <>
                 <div className="scanner-frame-mask" />
-                {/* Capture & Scan button moved INSIDE the frame */}
-                <button
-                  type="button"
-                  className="scanner-scan-btn scanner-scan-btn--camera"
-                  onClick={handleCaptureAndScan}
-                  disabled={scanning}
-                >
-                  {scanning ? <Loading /> : <Camera />}
-                </button>
+
                 <div className="scanner-frame" ref={frameRef}>
                   <div className="scanner-frame-border" />
                   <div className="scanner-frame-label">
                     Align the card inside the frame
                   </div>
+
+                  {/* Button INSIDE frame (make sure your .scanner-frame allows pointer-events) */}
+                  <button
+                    type="button"
+                    className="scanner-scan-btn scanner-scan-btn--camera"
+                    onClick={handleCaptureAndScan}
+                    disabled={scanning}
+                    style={{ pointerEvents: "auto" }}
+                  >
+                    {scanning ? <Loading /> : <Camera />}
+                  </button>
                 </div>
               </>
             )}
@@ -880,58 +703,64 @@ export default function Scanner() {
       </section>
 
       {/* File upload section */}
-
-      {cameraReady && (
-        <section className="scanner-controls">
-          <h3>Captured image:</h3>
-          {/*
-        <div className="scanner-file-row">
+      <section className="scanner-controls">
+        {/* <div className="scanner-file-row">
           <label className="scanner-file-label">
             <span>Select a card photo</span>
             <input type="file" accept="image/*" onChange={handleFileChange} />
           </label>
-        </div>
-        */}
+        </div> */}
 
-          {imagePreviewUrl && (
-            <div className="scanner-preview">
-              <img
-                src={imagePreviewUrl}
-                alt="Selected card preview"
-                className="scanner-preview-image"
-              />
-            </div>
-          )}
-
-          {scanError && <div className="scanner-error">{scanError}</div>}
-          {statusMessage && (
-            <p
-              className="scanner-status"
-              dangerouslySetInnerHTML={{ __html: statusMessage }}
+        {imagePreviewUrl && (
+          <div className="scanner-preview">
+            <img
+              src={imagePreviewUrl}
+              alt="Selected card preview"
+              className="scanner-preview-image"
             />
-          )}
+          </div>
+        )}
 
-          {detectedLanguage && (
-            <div className="scanner-language">
-              <p>
-                Detected language:{" "}
-                <strong>
-                  {prettyLanguage(detectedLanguage)} ({detectedLanguage})
-                </strong>
-              </p>
+        {/* <button
+          type="button"
+          className="scanner-scan-btn"
+          onClick={handleScanClick}
+          disabled={(!imageFile && !imagePreviewUrl) || scanning || !user}
+          title={!user ? "Sign in to scan with Cloud Vision" : "Scan selected image"}
+        >
+          {scanning ? "Scanning…" : "Scan Selected Image"}
+        </button> */}
 
-              {/* Show detected Pokémon sprite if available */}
-              {pendingMatch && pendingMatch.dexNumber && (
-                <img
-                  className="scanner-language-sprite"
-                  src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pendingMatch.dexNumber}.png`}
-                  alt={`Pokémon #${pendingMatch.dexNumber} sprite`}
-                />
+        {scanError && <div className="scanner-error">{scanError}</div>}
+
+        {statusMessage && (
+          <p
+            className="scanner-status"
+            dangerouslySetInnerHTML={{ __html: statusMessage }}
+          />
+        )}
+
+        {detectedLanguage && (
+          <div className="scanner-language">
+            <p>
+              {/* Source: <strong>CardVision</strong> */}
+              {pendingMatch?.score != null && (
+                <>
+                  Confidence: <strong>{pendingMatch.score.toFixed(3)}</strong>
+                </>
               )}
-            </div>
-          )}
-        </section>
-      )}
+            </p>
+
+            {pendingMatch?.dexNumber && (
+              <img
+                className="scanner-language-sprite"
+                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pendingMatch.dexNumber}.png`}
+                alt={`Pokémon #${pendingMatch.dexNumber} sprite`}
+              />
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Confirmation + placement UI */}
       {pendingMatch && (
@@ -943,20 +772,30 @@ export default function Scanner() {
                 <span className="bold">
                   {pendingMatch.name} <span>#{pendingMatch.dexNumber}</span>
                 </span>
-                {englishName && (
+                {englishName && englishName !== pendingMatch.name && (
                   <>
                     {" "}
-                    : {englishName} <span>#{pendingMatch.dexNumber}</span>
+                    — {englishName} <span>#{pendingMatch.dexNumber}</span>
                   </>
                 )}
               </div>
-              <div className="scanner-confirm-lang">
-                Language:
-                <span className="bold">
-                  {prettyLanguage(pendingMatch.langCode)} (
-                  {pendingMatch.langCode})
-                </span>
-              </div>
+
+              {/* <div className="scanner-confirm-lang">
+                Source: <span className="bold">Cloud Vision</span>
+                {pendingMatch.score != null && (
+                  <>
+                    {" "}
+                    • <span className="bold">{pendingMatch.score.toFixed(3)}</span>
+                  </>
+                )}
+              </div> */}
+
+              {pendingMatch.rawDescription && (
+                <div className="scanner-confirm-owned-note">
+                  {/* Matched from: “{pendingMatch.rawDescription}” */}
+                </div>
+              )}
+
               {pendingMatch.alreadyOwned && (
                 <div className="scanner-confirm-owned-note">
                   This Pokémon is already in your collection.
@@ -990,15 +829,23 @@ export default function Scanner() {
           <div className="scanner-placement-details">
             <p>
               <strong>
-                {pendingMatch.name} (# {pendingMatch.dexNumber})
+                {pendingMatch.name} (# {pendingMatch.dexNumber}) goes:
               </strong>{" "}
-              goes here:
             </p>
             <ul>
-              <li>Binder: {placementInfo.binder}</li>
-              <li>Page: {placementInfo.page}</li>
-              <li>Slot on page: {placementInfo.slotOnPage}</li>
-              <li>Slot within binder: {placementInfo.slotInBinder}</li>
+              <li>
+                Binder: <strong>{placementInfo.binder}</strong>
+              </li>
+              <li>
+                Page: <strong>{placementInfo.page}</strong>
+              </li>
+              <li>
+                Slot on page: <strong>{placementInfo.slotOnPage}</strong>
+              </li>
+              <li>
+                Slot within binder:{" "}
+                <strong>{placementInfo.slotInBinder}</strong>
+              </li>
             </ul>
           </div>
 
@@ -1023,9 +870,10 @@ export default function Scanner() {
         </section>
       )}
 
+      {/* Debug section (kept to preserve CSS & easy debugging) */}
       {ocrText && (
         <section className="scanner-ocr-debug">
-          <h2>Recognized Text (last name-pass)</h2>
+          <h2>Vision Debug (webEntities)</h2>
           <pre>{ocrText}</pre>
         </section>
       )}
