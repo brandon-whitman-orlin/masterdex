@@ -102,7 +102,7 @@
   border: 2px solid var(--color-secondary-dark);
 }
 
-.scanner-scan-btn:disabled {
+.scanner-frame .scanner-scan-btn:disabled {
   animation: loading-spin 100s infinite linear;
 }
 

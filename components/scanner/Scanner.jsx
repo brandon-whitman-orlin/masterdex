@@ -604,7 +604,7 @@ export default function Scanner() {
 
       if (slot && !slot.error) {
         setStatusMessage(
-          `Added ${pendingMatch.name} (#${pendingMatch.dexNumber}) to your collection.\nBinder ${slot.binder}, Page ${slot.page}, Slot ${slot.slotOnPage} (slot ${slot.slotInBinder} in that binder).`
+          `Added ${pendingMatch.name} (#${pendingMatch.dexNumber}) to your collection.<br/>Binder ${slot.binder}, Page ${slot.page}, Slot ${slot.slotOnPage} (slot ${slot.slotInBinder} in that binder).`
         );
       } else {
         setStatusMessage(
